@@ -1,28 +1,23 @@
-# 治理
+# Governance
 
-Nexum 采用渐进式治理。
+Nexum follows an incremental governance model.
 
-## 项目早期
+## Early Stage
 
-项目早期由项目维护者负责：
+During the early stage, project maintainers are responsible for merging Pull Requests, managing releases, accepting or rejecting RFCs, maintaining the roadmap and project policies, and appointing additional maintainers.
 
-- 合并 Pull Request
-- 管理发布
-- 接受或拒绝 RFC
-- 维护路线图
-- 维护项目规范
-- 任命新的维护者
+Technical decisions should leave a traceable record through public Issues, Discussions, RFCs, and Pull Requests whenever practical.
 
-技术决策应尽可能通过公开 Issue、Discussion、RFC 和 Pull Request 留下可追踪记录。
+## Maintainers
 
-## 维护者
+As the community grows, additional maintainers may be appointed with clearly defined responsibilities.
 
-随着社区扩大，可以增加具有明确职责的维护者角色。维护者应持续参与项目开发、代码审查和社区协作，并遵守项目行为准则。
+## Major Changes
 
-## 重大变更
+Major changes involving public APIs, protocols, data formats, core architecture, or compatibility should be documented through an RFC or ADR.
 
-涉及公共 API、协议、数据格式、核心架构或兼容性的重大变更，应通过 RFC 或 ADR 记录背景、方案、替代方案和决策结果。
+## Changing Governance
 
-## 修改治理规则
+Governance may be changed through a public Pull Request with an explanation of the reason for the change.
 
-治理规则本身也可以通过公开 Pull Request 修改，并应说明修改原因。
+For the Chinese version, see [GOVERNANCE.zh-CN.md](GOVERNANCE.zh-CN.md).
