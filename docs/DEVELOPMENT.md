@@ -1,51 +1,31 @@
-# 开发指南
+# Development Guide
 
-## 环境
+## Environment
 
-Nexum 的核心使用 Rust，客户端界面使用 TypeScript/React，桌面应用使用 Tauri。
+Nexum Core uses Rust. Client interfaces use TypeScript/React, and the desktop application uses Tauri.
 
-建议安装：
+Recommended tools: Rust stable, Cargo, Node.js LTS, and pnpm.
 
-- Rust stable
-- Cargo
-- Node.js LTS
-- pnpm
+## Workspace
 
-## 工作区
+The Rust workspace lives at the repository root under crates/.
 
-Rust workspace 位于根目录：
+## Development Principles
 
-```text
-crates/
-├── core/
-├── domain/
-├── task/
-├── scheduler/
-├── storage/
-├── resolver/
-├── protocol/
-├── plugin/
-├── security/
-├── media/
-└── engine/
-```
+- Keep module boundaries clear.
+- Document and test public APIs.
+- Make core state transitions testable.
+- Keep UI logic out of the Core.
+- Keep engine-specific details out of the Domain Model.
+- Submit an RFC before destructive architectural changes.
 
-## 开发原则
+## Common Commands
 
-- 优先保持模块边界清晰。
-- 公共 API 必须有文档和测试。
-- 核心状态变化必须可测试。
-- 不要让 UI 逻辑进入 Core。
-- 不要让具体 Engine 污染 Domain Model。
-- 破坏性架构变化先提交 RFC。
+- cargo check --workspace
+- cargo test --workspace
+- cargo fmt --all
+- cargo clippy --workspace --all-targets
 
-## 常用命令
+More complete local development and debugging instructions will be added as the project becomes runnable.
 
-```bash
-cargo check --workspace
-cargo test --workspace
-cargo fmt --all
-cargo clippy --workspace --all-targets
-```
-
-随着项目进入可运行阶段，会在这里补充完整的本地开发、调试和测试流程。
+For the Chinese version, see [DEVELOPMENT.zh-CN.md](DEVELOPMENT.zh-CN.md).
