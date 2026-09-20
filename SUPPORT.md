@@ -1,17 +1,11 @@
-# 获取帮助
+# Support
 
-一般问题请优先：
+For general questions:
 
-1. 搜索已有 Issue 和文档。
-2. 创建新的 Issue，并提供完整的复现信息。
-3. 对设计和功能方向提出建议时，使用 Discussion（如果仓库已启用）。
+1. Search existing Issues and documentation.
+2. Open an Issue with complete reproduction information when appropriate.
+3. Use Discussions for design and feature-direction questions when enabled.
 
-提交问题时，请尽量说明：
+When reporting a problem, include the operating system and version, Nexum version or commit, relevant component, reproduction steps, actual result, expected result, and relevant logs.
 
-- 操作系统与版本
-- Nexum 版本或 commit
-- 使用的组件
-- 复现步骤
-- 实际结果
-- 预期结果
-- 相关日志或错误信息
+For the Chinese version, see [SUPPORT.zh-CN.md](SUPPORT.zh-CN.md).
