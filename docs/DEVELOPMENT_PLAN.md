@@ -32,11 +32,11 @@ Goal: define what a download task is and how it behaves.
 
 #### 1A — Domain Model
 
-- [ ] Task identifiers
-- [ ] Download source model
-- [ ] Destination model
-- [ ] Basic task metadata
-- [ ] Progress model
+- [x] Task identifiers
+- [x] Download source model
+- [x] Destination model
+- [x] Basic task metadata
+- [x] Progress model
 - [ ] Error model
 
 #### 1B — Task State Machine
