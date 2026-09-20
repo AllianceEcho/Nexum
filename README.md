@@ -39,6 +39,7 @@ See:
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Governance](GOVERNANCE.md)
+- [Development Plan](docs/DEVELOPMENT_PLAN.md)
 
 For the Chinese version, see [README.zh-CN.md](README.zh-CN.md).
 
