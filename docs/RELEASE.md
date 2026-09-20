@@ -1,15 +1,17 @@
-# 发布流程
+# Release Process
 
-Nexum 当前处于早期开发阶段，正式发布流程会随着 CI、版本策略和分发渠道建立而完善。
+Nexum is in early development, so the formal release process will evolve with CI, versioning, and distribution channels.
 
-计划中的发布步骤：
+Planned release flow:
 
-1. 确认版本范围和变更记录。
-2. 运行完整测试与静态检查。
-3. 更新 CHANGELOG。
-4. 创建版本标签。
-5. 构建目标平台产物。
-6. 发布 GitHub Release。
-7. 对发布后的问题进行跟踪。
+1. Confirm the version scope and changelog.
+2. Run the full test and static-check suite.
+3. Update CHANGELOG.
+4. Create a version tag.
+5. Build target-platform artifacts.
+6. Publish a GitHub Release.
+7. Track post-release issues.
 
-版本策略和自动化发布流程稳定后，会在本文件中记录具体规范。
+Specific versioning and automated release rules will be documented here once established.
+
+For the Chinese version, see [RELEASE.zh-CN.md](RELEASE.zh-CN.md).
