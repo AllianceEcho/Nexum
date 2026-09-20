@@ -1,0 +1,1 @@
+//! Nexum core library.\n
