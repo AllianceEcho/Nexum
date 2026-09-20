@@ -1,6 +1,6 @@
 # Roadmap
 
-Nexum 的路线图会随着架构验证和社区反馈持续调整。
+Nexum's roadmap will evolve as the architecture is validated and community feedback is incorporated.
 
 ## Phase 1 — Core
 
@@ -42,4 +42,6 @@ Nexum 的路线图会随着架构验证和社区反馈持续调整。
 - [ ] AI/MCP integration
 - [ ] Remote device management
 
-> Roadmap items are directional rather than promises of a fixed release schedule.
+Roadmap items are directional rather than promises of a fixed release schedule.
+
+For the Chinese version, see [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md).
