@@ -1,0 +1,8 @@
+[package]
+name = "nexum-engine"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Nexum engine component"
+
+[dependencies]
