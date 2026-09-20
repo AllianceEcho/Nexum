@@ -1,23 +1,19 @@
-# 安全策略
+# Security Policy
 
-Nexum 重视安全问题。
+Nexum takes security issues seriously.
 
-## 报告安全漏洞
+## Reporting a Vulnerability
 
-如果你发现可能影响用户安全、数据安全或系统安全的漏洞，请不要直接在公开 Issue 中披露完整细节。
+Do not disclose complete details of a security vulnerability in a public Issue.
 
-请通过 GitHub Security Advisories（如果仓库已启用）或项目维护者提供的私下联系方式报告。
+Use GitHub Security Advisories when enabled, or contact the maintainers through an appropriate private channel.
 
-报告中尽量包含：
+Please include the affected version or commit, vulnerability type, reproduction steps, impact, and suggested mitigation when available.
 
-- 受影响的版本或提交
-- 漏洞类型
-- 复现步骤
-- 影响范围
-- 可能的修复建议
+## Handling
 
-## 处理原则
+Maintainers will acknowledge the report, assess its impact, coordinate remediation when appropriate, and determine a suitable disclosure timeline.
 
-维护者会确认问题、评估影响，并在适当情况下协调修复和公开披露。
+Avoid publishing directly exploitable details before a vulnerability is fixed.
 
-在漏洞得到修复前，请避免公开能够直接利用该漏洞的细节。
+For the Chinese version, see [SECURITY.zh-CN.md](SECURITY.zh-CN.md).
