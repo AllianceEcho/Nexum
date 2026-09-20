@@ -3,6 +3,8 @@ name = "nexum-core"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "Nexum core component"
+description = "Nexum core orchestration layer"
 
 [dependencies]
+nexum-domain = { path = "../domain" }
+nexum-task = { path = "../task" }
