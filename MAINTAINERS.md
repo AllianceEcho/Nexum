@@ -1,9 +1,10 @@
-# 维护者
+# Maintainers
 
-Nexum 的维护者负责项目的长期维护、代码审查、发布和社区协作。
+Nexum maintainers are responsible for long-term project maintenance, code review, releases, and community collaboration.
 
-当前维护者：
-
+Current maintainer:
 - AllianceEcho — Project Maintainer
 
-随着项目发展，本文件会记录新增的维护者及其职责范围。
+This file will be updated as the project grows.
+
+For the Chinese version, see [MAINTAINERS.zh-CN.md](MAINTAINERS.zh-CN.md).
