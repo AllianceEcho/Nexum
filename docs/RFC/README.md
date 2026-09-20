@@ -1,36 +1,15 @@
 # RFC
 
-RFC（Request for Comments）用于记录需要公开讨论的重大设计变更。
+RFCs (Request for Comments) document major design changes that require public discussion.
 
-## 适用范围
+## Scope
 
-- Core 架构变化
-- Protocol 变化
-- 公共 API 变化
-- 数据模型变化
-- 插件权限模型变化
-- Breaking Change
+Use an RFC for core architecture changes, Protocol changes, public API changes, data model changes, plugin permission model changes, and breaking changes.
 
-## 建议结构
+## Suggested Structure
 
-```markdown
-# RFC: <标题>
+An RFC should normally contain Summary, Motivation, Design, Alternatives, Compatibility, Security, Implementation Plan, and Open Questions.
 
-## 摘要
+The goal is to give important technical decisions public and traceable context.
 
-## 动机
-
-## 设计
-
-## 替代方案
-
-## 兼容性
-
-## 安全性
-
-## 实施计划
-
-## 未解决问题
-```
-
-RFC 的目标是让重要技术决策具有公开、可追踪的上下文。
+For the Chinese version, see [README.zh-CN.md](README.zh-CN.md).
