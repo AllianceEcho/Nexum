@@ -1,20 +1,9 @@
 # Architecture Decision Records
 
-ADR 用于记录已经作出的重要技术决策，以及决策发生时的背景。
+ADRs record important technical decisions and the context in which they were made.
 
-建议记录：
+Recommended sections: Context, Decision, Rationale, Consequences, and Alternatives Considered.
 
-- 背景
-- 决策
-- 原因
-- 影响
-- 被考虑的替代方案
+Examples include decisions about the Rust core, SQLite storage, and Protocol versioning.
 
-示例：
-
-```text
-docs/decisions/
-├── 0001-use-rust-core.md
-├── 0002-use-sqlite-storage.md
-└── 0003-protocol-versioning.md
-```
+For the Chinese version, see [README.zh-CN.md](README.zh-CN.md).
