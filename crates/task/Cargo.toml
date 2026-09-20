@@ -3,6 +3,7 @@ name = "nexum-task"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "Nexum task component"
+description = "Nexum task model and state machine"
 
 [dependencies]
+nexum-domain = { path = "../domain" }
