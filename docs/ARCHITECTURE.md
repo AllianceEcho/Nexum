@@ -1,88 +1,47 @@
-# 架构设计
+# Architecture
 
-## 总体结构
+## Overview
 
-Nexum 将下载能力组织为分层架构：
+Nexum organizes download capabilities into clear layers: Client → Nexum Protocol → Nexum Core → Engine Adapter.
 
-```text
-Client
-  │
-  ▼
-Nexum Protocol
-  │
-  ▼
-Nexum Core
-  ├── Task
-  ├── Scheduler
-  ├── Resolver
-  ├── Storage
-  ├── Plugin
-  └── Engine Adapter
-          ├── curl
-          ├── aria2
-          └── libtorrent
-```
-
-## 核心原则
+## Core Principles
 
 ### Core-first
 
-下载任务的生命周期、调度、状态和事件由 Core 统一管理。
+The Core owns task lifecycle, scheduling, state, and events.
 
 ### Protocol-first
 
-客户端不直接依赖内部实现，而是通过稳定的 Protocol 与 Core 通信。
+Clients communicate with the Core through a stable Protocol rather than depending on internal implementation details.
 
 ### Local-first
 
-本地运行是默认路径；协议和身份模型同时为远程部署保留扩展能力。
+Local execution is the default path while the protocol and identity model remain ready for remote deployment.
 
-## 任务模型
+## Task Model
 
-核心任务状态遵循明确的状态机：
+The core task lifecycle is Created → Queued → Downloading → Paused / Completed / Failed → Retry.
 
-```text
-Created → Queued → Downloading
-                       ├→ Paused
-                       ├→ Completed
-                       └→ Failed → Retry
-```
-
-持久化数据进入 Storage；实时状态和事件由 Core 管理。
+Persistent data belongs in Storage; real-time state and events are managed by the Core.
 
 ## Resolver
 
-统一输入经过 Resolver 转换：
-
-```text
-Input → Resolver → ResolvedDownload → DownloadTask → Scheduler → Engine
-```
+Inputs are normalized through Input → Resolver → ResolvedDownload → DownloadTask → Scheduler → Engine.
 
 ## Engine Adapter
 
-引擎通过统一接口接入 Core。Core 不应依赖某个具体引擎的内部数据结构。
+Engines integrate through a common adapter boundary. The Core should not depend on engine-specific internal data structures.
 
 ## Event Model
 
-典型事件包括：
+Typical events include TaskCreated, TaskQueued, TaskStarted, TaskProgress, TaskPaused, TaskResumed, TaskCompleted, TaskFailed, TaskRetrying, and TaskRemoved.
 
-- TaskCreated
-- TaskQueued
-- TaskStarted
-- TaskProgress
-- TaskPaused
-- TaskResumed
-- TaskCompleted
-- TaskFailed
-- TaskRetrying
-- TaskRemoved
+## Storage
 
-后续协议会定义这些事件的稳定表示。
+SQLite stores task metadata, configuration, and required history. Real-time state should be driven by the Core event model rather than database polling alone.
 
-## 数据存储
+## Extensions
 
-SQLite 用于持久化任务元数据、配置和必要的历史信息。实时下载状态不以数据库轮询作为唯一来源，而由 Core 的事件模型驱动。
+Plugins receive explicit capability boundaries through manifests, permissions, and capability APIs.
 
-## 扩展
-
-插件通过 Manifest、Permission 和 Capability API 获得明确能力边界。扩展 API 应尽量与 Core 内部实现解耦。
+For the Chinese version, see [ARCHITECTURE.zh-CN.md](ARCHITECTURE.zh-CN.md).
