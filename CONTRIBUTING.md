@@ -1,46 +1,48 @@
-# 贡献指南
+# Contributing
 
-感谢你参与 Nexum。
+Thank you for contributing to Nexum.
 
-Nexum 目前处于早期开发阶段。为了保持核心架构清晰，我们采用一个简单的原则：
+Nexum is in early development. To keep the architecture clear, we follow a simple rule:
 
-> **小改动直接 PR，大改动先讨论，架构改动必须 RFC。**
+**Small changes can go directly to a PR. Large changes should be discussed first. Architectural changes require an RFC.**
 
-## 提交前
+## Before Contributing
 
-1. 阅读 [开发指南](docs/DEVELOPMENT.md)。
-2. 确认 Issue、Discussion 或 RFC 中已经记录了相关背景（如果适用）。
-3. 保持改动范围清晰，避免把无关重构混入功能或修复。
-4. 为行为变化补充测试和文档。
+1. Read the [Development Guide](docs/DEVELOPMENT.md).
+2. Check whether the relevant context is already documented in an Issue, Discussion, or RFC.
+3. Keep each change focused and avoid unrelated refactoring.
+4. Add tests and documentation for behavioral changes.
 
-## 什么情况需要 RFC
+## When an RFC Is Required
 
-以下类型的改动应先提出 RFC：
+Use an RFC for:
 
-- 核心架构调整
-- Nexum Protocol 的新增或破坏性修改
-- 数据模型或数据库迁移
-- 核心任务状态机变化
-- 插件权限模型变化
-- Engine Adapter 抽象变化
-- 可能影响多个模块的 Breaking Change
+- Core architecture changes
+- New or breaking Protocol changes
+- Data model or database migrations
+- Core task state-machine changes
+- Plugin permission model changes
+- Engine Adapter abstraction changes
+- Breaking changes affecting multiple modules
 
-## Pull Request
+## Pull Requests
 
-PR 应说明：
+A PR should explain:
 
-- 改动解决了什么问题
-- 为什么采用当前方案
-- 是否存在兼容性影响
-- 如何验证
-- 是否需要更新文档
+- What problem it solves
+- Why the proposed approach was chosen
+- Compatibility impact
+- How it was validated
+- Whether documentation needs to change
 
-保持提交小而聚焦。维护者会优先关注正确性、可维护性、测试覆盖和长期兼容性。
+Keep commits focused. Reviewers will prioritize correctness, maintainability, test coverage, and long-term compatibility.
 
-## 技术讨论
+## Technical Discussion
 
-可以直接、充分地讨论技术方案，也可以提出反对意见。请针对代码、设计和证据讨论，不针对贡献者本人。
+Strong technical disagreement is welcome. Discuss code, design, evidence, and trade-offs rather than contributors.
 
-## 安全问题
+## Security
 
-不要在公开 Issue 中披露尚未修复的安全漏洞。请按照 [SECURITY.md](SECURITY.md) 中的流程报告。
+Do not disclose unfixed security vulnerabilities in public Issues. Follow [SECURITY.md](SECURITY.md) for reporting guidance.
+
+For the Chinese version, see [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md).
