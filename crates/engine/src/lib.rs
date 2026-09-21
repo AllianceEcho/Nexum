@@ -585,7 +585,11 @@ mod tests {
         assert_eq!(registry.names(), vec!["fake"]);
         assert!(registry.get("fake").is_some());
         assert!(registry.get("missing").is_none());
-        assert!(registry.start_engine(&TaskId::new("x"), "https://x", "/x").is_ok());
+        assert!(
+            registry
+                .start_engine(&TaskId::new("x"), "https://x", "/x")
+                .is_ok()
+        );
     }
 
     #[test]
