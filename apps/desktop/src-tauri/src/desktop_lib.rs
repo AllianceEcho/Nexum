@@ -44,7 +44,7 @@ impl RpcResult {
 
 /// Call a JSON-RPC method on the server.
 pub fn call_rpc(server: &str, method: &str, params: Option<Value>, timeout_ms: u64) -> RpcResult {
-    let stream = match TcpStream::connect(server) {
+    let mut stream = match TcpStream::connect(server) {
         Ok(s) => s,
         Err(e) => return RpcResult::err(format!("connect: {e}")),
     };
