@@ -176,6 +176,15 @@ impl Scheduler {
         Ok(())
     }
 
+    /// Restores a queued task after process restart without changing its persisted state.
+    pub fn restore_queued(
+        &mut self,
+        task_id: &TaskId,
+        priority: Priority,
+    ) {
+        self.push_queue(task_id, priority);
+    }
+
     pub fn start_next(
         &mut self,
         task_service: &mut TaskService,
