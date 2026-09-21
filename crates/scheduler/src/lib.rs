@@ -421,6 +421,26 @@ mod tests {
     }
 
     #[test]
+    fn bandwidth_policy_reports_expected_limits() {
+        let (mut service, ids) = service_with_tasks(2);
+        let mut scheduler = Scheduler::new(SchedulerConfig {
+            max_concurrent_tasks: 2,
+            bandwidth_policy: BandwidthPolicyKind::Shared {
+                total_bytes_per_second: 1_000,
+            },
+            ..SchedulerConfig::default()
+        }).unwrap();
+
+        assert_eq!(scheduler.bandwidth_limit_bytes_per_second(), Some(1_000));
+        scheduler.enqueue(&mut service, &ids[0], Priority::NORMAL).unwrap();
+        scheduler.enqueue(&mut service, &ids[1], Priority::NORMAL).unwrap();
+        scheduler.start_next(&mut service).unwrap();
+        assert_eq!(scheduler.bandwidth_limit_bytes_per_second(), Some(1_000));
+        scheduler.start_next(&mut service).unwrap();
+        assert_eq!(scheduler.bandwidth_limit_bytes_per_second(), Some(500));
+    }
+
+    #[test]
     fn retry_events_are_emitted() {
         let (mut service, ids) = service_with_tasks(1);
         let mut scheduler = Scheduler::new(SchedulerConfig {
