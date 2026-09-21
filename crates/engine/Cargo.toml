@@ -3,6 +3,8 @@ name = "nexum-engine"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "Nexum engine component"
+description = "Nexum engine adapter component"
 
 [dependencies]
+nexum-domain = { path = "../domain" }
+nexum-task = { path = "../task" }
