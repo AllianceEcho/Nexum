@@ -143,7 +143,6 @@ impl JsonRpcClient {
     }
 }
 
-
 fn usage() {
     eprintln!("usage:");
     eprintln!("  nexum [--server ADDR] task list");
@@ -213,7 +212,9 @@ fn main() {
         }
         ("task", "create") if args.len() == 5 => (
             "task.create",
-            Some(serde_json::json!({"id": args[2], "source": args[3], "destination": args[4]})),
+            Some(
+                serde_json::json!({"id": args[2], "source": args[3], "destination": args[4]}),
+            ),
         ),
         ("task", "queue") if args.len() == 3 => {
             ("task.queue", Some(serde_json::json!({"id": args[2]})))
