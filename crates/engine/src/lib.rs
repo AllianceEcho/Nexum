@@ -173,7 +173,7 @@ impl Default for HttpEngine {
     fn default() -> Self {
         Self {
             client: reqwest::blocking::Client::builder()
-                .max_redirects(5)
+                .redirect(reqwest::redirect::Policy::limited(5))
                 .build()
                 .expect("failed to build http client"),
             tasks: std::collections::HashMap::new(),
@@ -319,7 +319,7 @@ impl EngineRegistry {
         self.engines.iter().find(|engine| engine.name() == name).map(|engine| engine.as_ref())
     }
 
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut dyn EngineAdapter> {
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut (dyn EngineAdapter + '_)> {
         self.engines.iter_mut().find(|engine| engine.name() == name).map(|engine| engine.as_mut())
     }
 
