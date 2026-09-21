@@ -189,13 +189,39 @@ impl HttpEngine {
     fn entry_mut(&mut self, task: &EngineTask) -> Result<&mut (TaskId, EngineTaskState, Progress, String), EngineError> {
         self.tasks.get_mut(&task.handle).ok_or_else(|| EngineError::TaskNotFound(task.task_id.clone()))
     }
+
+    fn download(&self, source: &str, destination: &str) -> Result<Progress, EngineError> {
+        let mut response = self.client.get(source).send()
+            .map_err(|error| EngineError::Failed(error.to_string()))?;
+        if !response.status().is_success() {
+            return Err(EngineError::Failed(format!("HTTP GET returned {}", response.status())));
+        }
+
+        let total = response.content_length();
+        let mut file = std::fs::File::create(destination)
+            .map_err(|error| EngineError::Failed(error.to_string()))?;
+        let mut downloaded = 0u64;
+        let mut buffer = [0u8; 32 * 1024];
+
+        loop {
+            use std::io::{Read, Write};
+            let read = response.read(&mut buffer)
+                .map_err(|error| EngineError::Failed(error.to_string()))?;
+            if read == 0 { break; }
+            file.write_all(&buffer[..read])
+                .map_err(|error| EngineError::Failed(error.to_string()))?;
+            downloaded += read as u64;
+        }
+
+        Ok(Progress::new(downloaded, total))
+    }
 }
 
 impl EngineAdapter for HttpEngine {
     fn name(&self) -> &str { "http" }
 
     fn capabilities(&self) -> EngineCapabilities {
-        EngineCapabilities { supports_pause: true, supports_resume: true, supports_remove: true, supports_progress: true }
+        EngineCapabilities { supports_pause: false, supports_resume: false, supports_remove: true, supports_progress: true }
     }
 
     fn start(&mut self, task_id: &TaskId, source: &str, destination: &str) -> Result<EngineTask, EngineError> {
@@ -204,6 +230,7 @@ impl EngineAdapter for HttpEngine {
         if !response.status().is_success() {
             return Err(EngineError::Failed(format!("HTTP HEAD returned {}", response.status())));
         }
+
         self.next_handle += 1;
         let handle = format!("http-{}", self.next_handle);
         let total = response.content_length();
@@ -211,22 +238,28 @@ impl EngineAdapter for HttpEngine {
             handle.clone(),
             (task_id.clone(), EngineTaskState::Downloading, Progress::new(0, total), destination.to_owned()),
         );
+
+        let _ = self.download(source, destination).map(|progress| {
+            if let Some(entry) = self.tasks.get_mut(&handle) {
+                entry.1 = EngineTaskState::Completed;
+                entry.2 = progress;
+            }
+        }).map_err(|error| {
+            if let Some(entry) = self.tasks.get_mut(&handle) {
+                entry.1 = EngineTaskState::Failed;
+            }
+            error
+        })?;
+
         Ok(EngineTask { task_id: task_id.clone(), handle })
     }
 
-    fn pause(&mut self, task: &EngineTask) -> Result<(), EngineError> {
-        let entry = self.entry_mut(task)?;
-        entry.1 = EngineTaskState::Paused;
-        Ok(())
+    fn pause(&mut self, _task: &EngineTask) -> Result<(), EngineError> {
+        Err(EngineError::UnsupportedOperation("pause"))
     }
 
-    fn resume(&mut self, task: &EngineTask) -> Result<(), EngineError> {
-        let entry = self.entry_mut(task)?;
-        if entry.1 != EngineTaskState::Paused {
-            return Err(EngineError::Failed("task is not paused".into()));
-        }
-        entry.1 = EngineTaskState::Downloading;
-        Ok(())
+    fn resume(&mut self, _task: &EngineTask) -> Result<(), EngineError> {
+        Err(EngineError::UnsupportedOperation("resume"))
     }
 
     fn remove(&mut self, task: &EngineTask) -> Result<(), EngineError> {
