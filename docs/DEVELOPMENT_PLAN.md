@@ -77,7 +77,7 @@ Goal: define what a download task is and how it behaves.
 
 ### Phase 3 — Storage
 
-- [ ] Repository traits
+- [x] Repository traits
 - [ ] SQLite implementation
 - [ ] Schema versioning
 - [ ] Migration mechanism
@@ -206,4 +206,4 @@ Protocol, storage schema, and plugin APIs require explicit versioning strategies
 
 ## 6. Immediate Work
 
-Phase 2 is now the active implementation area. Scheduler queueing, concurrency, priority, retry policy, pause/resume, and scheduler events are implemented. The next scheduler item is bandwidth policy abstraction, followed by Phase 3 Storage.
+**Phase 2 — Scheduler is complete.** Phase 3 — Storage is now active. The repository boundary, stored task model, and in-memory repository are implemented; next steps are SQLite, schema versioning, migrations, and restart recovery.
