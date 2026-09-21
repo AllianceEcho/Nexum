@@ -348,7 +348,8 @@ impl RpcDispatcher {
                 nexum_core::nexum_task::TaskServiceError::NotFound(_),
             ) => DispatchError::TaskNotFound("task not found".into()),
             _ => DispatchError::Internal(format!("{e:?}")),
-        })?;
+        })
+        .map_err(|e| CoreError::Scheduler(e));
         Ok(Value::Bool(true))
     }
     fn task_start<R: nexum_core::nexum_storage::TaskRepository>(

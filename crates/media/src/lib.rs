@@ -50,7 +50,7 @@ pub struct Track {
     pub id: u32,
     pub codec: String,
     pub bitrate: Option<u64>,
-    pub duration: Option<f64>,
+    pub duration: Option<F64Eq>,
 }
 
 /// Selection criteria for a track.
@@ -66,7 +66,7 @@ pub enum TrackSelection {
 pub struct MediaProbe {
     pub path: PathBuf,
     pub media_type: MediaType,
-    pub duration: Option<f64>,
+    pub duration: Option<F64Eq>,
     pub size: u64,
 }
 
@@ -117,7 +117,7 @@ pub struct McpMediaRequest {
 }
 
 /// Status of an automated job.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum JobStatus {
     Pending,
     Running,
@@ -167,11 +167,20 @@ impl Job {
     }
 }
 
+/// Helper wrapper for f64 that implements Eq via raw bit comparison.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct F64Eq(pub f64);
+
+impl PartialEq for F64Eq {
+    fn eq(&self, other: &Self) -> bool { self.0.to_bits() == other.0.to_bits() }
+}
+impl Eq for F64Eq {}
+
 /// Result of a completed job.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct JobResult {
     pub output_path: PathBuf,
-    pub duration: f64,
+    pub duration: F64Eq,
     pub files_produced: Vec<PathBuf>,
     pub metadata: HashMap<String, String>,
 }
