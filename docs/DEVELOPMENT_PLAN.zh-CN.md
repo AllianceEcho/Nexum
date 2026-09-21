@@ -206,4 +206,4 @@ Protocol、Storage Schema 和 Plugin API 在正式公开前都必须建立明确
 
 ## 6. 当前立即执行
 
-**Phase 2 — Scheduler 已完成。** 当前进入 **Phase 3 — Storage**，首先建立 Repository trait、StoredTask 模型与 InMemoryRepository；下一步接入 SQLite、Schema versioning 与 Migration。
+**Phase 2 — Scheduler 已完成。** **Phase 3 — Storage 已完成基础实现。** Repository、SQLite、Schema versioning、Migration、Task 持久化与初步重启恢复均已接入。下一步完善恢复语义并进入 **Phase 4 — Resolver**。
