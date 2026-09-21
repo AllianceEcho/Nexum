@@ -92,6 +92,77 @@ pub fn map_engine_snapshot(snapshot: &EngineSnapshot) -> (TaskState, Progress) {
     (snapshot.to_task_state(), snapshot.progress.clone())
 }
 
+#[derive(Default)]
+pub struct InMemoryEngine {
+    tasks: std::collections::HashMap<String, (TaskId, EngineTaskState, Progress)>,
+    next_handle: u64,
+}
+
+impl InMemoryEngine {
+    pub fn new() -> Self { Self::default() }
+
+    fn entry(&self, task: &EngineTask) -> Result<&(TaskId, EngineTaskState, Progress), EngineError> {
+        self.tasks.get(&task.handle).ok_or_else(|| EngineError::TaskNotFound(task.task_id.clone()))
+    }
+
+    fn entry_mut(&mut self, task: &EngineTask) -> Result<&mut (TaskId, EngineTaskState, Progress), EngineError> {
+        self.tasks.get_mut(&task.handle).ok_or_else(|| EngineError::TaskNotFound(task.task_id.clone()))
+    }
+}
+
+impl EngineAdapter for InMemoryEngine {
+    fn name(&self) -> &str { "in-memory" }
+
+    fn capabilities(&self) -> EngineCapabilities {
+        EngineCapabilities {
+            supports_pause: true,
+            supports_resume: true,
+            supports_remove: true,
+            supports_progress: true,
+        }
+    }
+
+    fn start(&mut self, task_id: &TaskId, _source: &str, _destination: &str) -> Result<EngineTask, EngineError> {
+        self.next_handle += 1;
+        let handle = format!("memory-{}", self.next_handle);
+        self.tasks.insert(
+            handle.clone(),
+            (task_id.clone(), EngineTaskState::Downloading, Progress::default()),
+        );
+        Ok(EngineTask { task_id: task_id.clone(), handle })
+    }
+
+    fn pause(&mut self, task: &EngineTask) -> Result<(), EngineError> {
+        let entry = self.entry_mut(task)?;
+        if entry.1 == EngineTaskState::Completed {
+            return Err(EngineError::Failed("cannot pause a completed task".into()));
+        }
+        entry.1 = EngineTaskState::Paused;
+        Ok(())
+    }
+
+    fn resume(&mut self, task: &EngineTask) -> Result<(), EngineError> {
+        let entry = self.entry_mut(task)?;
+        if entry.1 != EngineTaskState::Paused {
+            return Err(EngineError::Failed("task is not paused".into()));
+        }
+        entry.1 = EngineTaskState::Downloading;
+        Ok(())
+    }
+
+    fn remove(&mut self, task: &EngineTask) -> Result<(), EngineError> {
+        self.tasks.remove(&task.handle).map(|_| ()).ok_or_else(|| EngineError::TaskNotFound(task.task_id.clone()))
+    }
+
+    fn progress(&self, task: &EngineTask) -> Result<Progress, EngineError> {
+        Ok(self.entry(task)?.2.clone())
+    }
+
+    fn state(&self, task: &EngineTask) -> Result<EngineTaskState, EngineError> {
+        Ok(self.entry(task)?.1)
+    }
+}
+
 pub struct EngineRegistry {
     engines: Vec<Box<dyn EngineAdapter>>,
 }
@@ -186,6 +257,20 @@ mod tests {
         assert_eq!(engine.state(&task).unwrap(), EngineTaskState::Downloading);
         let snapshot = EngineSnapshot::new(engine.state(&task).unwrap(), engine.progress(&task).unwrap());
         assert_eq!(map_engine_snapshot(&snapshot).0, TaskState::Downloading);
+    }
+
+    #[test]
+    fn in_memory_engine_controls_task_lifecycle() {
+        let mut engine = InMemoryEngine::new();
+        let id = TaskId::from("task-1");
+        let task = engine.start(&id, "https://example.com/file", "/tmp/file").unwrap();
+        assert_eq!(engine.state(&task).unwrap(), EngineTaskState::Downloading);
+        engine.pause(&task).unwrap();
+        assert_eq!(engine.state(&task).unwrap(), EngineTaskState::Paused);
+        engine.resume(&task).unwrap();
+        assert_eq!(engine.state(&task).unwrap(), EngineTaskState::Downloading);
+        engine.remove(&task).unwrap();
+        assert!(matches!(engine.progress(&task), Err(EngineError::TaskNotFound(_))));
     }
 
     #[test]
