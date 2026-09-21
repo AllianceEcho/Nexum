@@ -6,21 +6,24 @@ All notable changes to Nexum will be documented here.
 
 ### Added
 
-- **Protocol**: Protocol versioning (`ProtocolVersion` V1), version negotiation via `server.version` and `server.auth` RPC methods
-- **Protocol**: Optional `credential` field on `RpcRequest` for future authentication (backward-compatible via `#[serde(default)]`)
-- **Protocol**: Re-exports all security types: `Credential`, `AuthenticationScheme`, `AuthenticationError`, `TlsConfig`, `RateLimit`, `PathPattern`
-- **Protocol**: 20 tests (up from 8) covering versioning, credential parsing, server methods
-- **Core**: 10 integration tests (up from 4) covering full lifecycle, concurrent limits, event draining, SQLite persistence, task cleanup
-- **Engine**: HTTP redirect following (up to 5), progress reporting during download, destination directory auto-creation
-- **Server**: Configurable `--port`, `--data-dir`, `--max-connections`, `--require-auth`, config file parsing, version/help output, credential logging
-- **CLI**: `config get-server` / `config set-server`, `auth set` / `auth clear`, `server ping` / `server version` / `server auth`, `--version` flag, RPC error formatting
-- **Security**: `Credential` enum (None, Bearer, ApiKey), `AuthenticationScheme`, `TlsConfig`, `AuthenticationError`, `CredentialStore`, `RateLimit`
-- **Plugin**: `Permission` enum, `PathPattern`, `Capability`, `PluginManifest` with builder pattern
-- **Media**: `MediaType`, `Track`, `MediaProbe` with builder, `MuxSpec`
-- **Desktop**: Tauri 2.0 + React 19 foundation, full task management UI (list, create, queue, pause, resume, remove)
+- **Core**: task lifecycle, scheduler, SQLite persistence, restart recovery, resolver integration, and event collection.
+- **Engine**: InMemory engine and HTTP engine with redirect following and progress reporting.
+- **Protocol**: JSON-RPC 2.0 task APIs, transport-neutral events, protocol version negotiation, and authentication boundary.
+- **Server**: multi-threaded TCP JSON-RPC service with configurable runtime settings and authentication support.
+- **CLI**: task management, reusable JSON-RPC client, server configuration, authentication commands, server inspection, and RPC error formatting.
+- **Desktop**: Tauri 2 + React application with task management and server settings.
+- **Browser**: Manifest V3 extension with context-menu, downloadable-link detection, send-to-Nexum flow, and server/device selection.
+- **Security**: credential, authentication, TLS configuration, and rate-limit foundations.
+- **Plugin**: manifest, permission, capability, and SDK foundations.
+- **Media**: foundational media types and probing structures.
 
-## [0.1.0] - 2025-XX-XX
+### Documentation
 
-- Initial project structure (workspace, docs, CI)
+- Synchronized README, architecture, development guides, roadmap, and development plans with the implemented repository state.
+- Kept English and Simplified Chinese project documentation aligned.
+
+## [0.1.0] - TBD
+
+- Initial project structure and public development foundation.
 
 For the Chinese version, see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
