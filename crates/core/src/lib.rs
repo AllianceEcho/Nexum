@@ -4,6 +4,7 @@ pub use nexum_domain;
 pub use nexum_engine;
 pub use nexum_resolver;
 pub use nexum_scheduler;
+pub use nexum_scheduler::SchedulerConfig;
 pub use nexum_storage;
 pub use nexum_task;
 
