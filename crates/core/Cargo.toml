@@ -8,3 +8,4 @@ description = "Nexum core orchestration layer"
 [dependencies]
 nexum-domain = { path = "../domain" }
 nexum-task = { path = "../task" }
+nexum-scheduler = { path = "../scheduler" }
