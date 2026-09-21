@@ -12,5 +12,6 @@ members = [
     "crates/security",
     "crates/media",
     "apps/server",
+    "apps/cli",
     "crates/engine",
 ]
