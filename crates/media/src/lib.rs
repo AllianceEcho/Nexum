@@ -4,14 +4,120 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-// Re-export existing types (backward compatible)
-pub use {
-    McpMediaRequest, MediaAnalysis, MediaManifest, MediaPipeline, MediaProbe, MediaSegment,
-    MediaSubtype, MediaType, MuxSpec, PipelineStep, SchedulePolicy, Track, TrackSelection,
-};
+// Media pipeline types (defined locally since nexum_protocol lacks these)
+
+/// Media file type.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub enum MediaType {
+    Video,
+    Audio,
+    Image,
+    Other(String),
+}
+
+/// Media file subtype.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MediaSubtype(pub String);
+
+/// A mux specification for output format.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MuxSpec {
+    pub format: String,
+    pub container: Option<String>,
+}
+
+/// A single step in a processing pipeline.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct PipelineStep {
+    pub id: u32,
+    pub name: String,
+    pub r#type: String,
+    pub input: Option<PathBuf>,
+    pub output: Option<PathBuf>,
+}
+
+/// Schedule policy for a media job.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum SchedulePolicy {
+    Immediate,
+    Delayed(u64),
+    Cron(String),
+}
+
+/// A media track (audio/video).
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct Track {
+    pub id: u32,
+    pub codec: String,
+    pub bitrate: Option<u64>,
+    pub duration: Option<f64>,
+}
+
+/// Selection criteria for a track.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum TrackSelection {
+    All,
+    ById(Vec<u32>),
+    ByCodec(String),
+}
+
+/// A media probe result (file analysis).
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct MediaProbe {
+    pub path: PathBuf,
+    pub media_type: MediaType,
+    pub duration: Option<f64>,
+    pub size: u64,
+}
+
+impl MediaProbe {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            media_type: MediaType::Other("unknown".to_owned()),
+            duration: None,
+            size: 0,
+        }
+    }
+}
+
+/// A media segment (chunk of media data).
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct MediaSegment {
+    pub start: u64,
+    pub length: u64,
+    pub data: Vec<u8>,
+}
+
+/// A manifest of media assets.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+pub struct MediaManifest {
+    pub assets: Vec<String>,
+}
+
+/// Media pipeline (orchestrates processing).
+#[derive(Clone, Debug, Default)]
+pub struct MediaPipeline {
+    pub steps: Vec<PipelineStep>,
+}
+
+/// A media analysis result.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct MediaAnalysis {
+    pub probe: MediaProbe,
+    pub segments: Vec<MediaSegment>,
+}
+
+/// A media-specific MCP (Model Context Protocol) request.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct McpMediaRequest {
+    pub action: String,
+    pub path: PathBuf,
+    pub params: HashMap<String, String>,
+}
 
 /// Status of an automated job.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum JobStatus {
     Pending,
     Running,
@@ -62,7 +168,7 @@ impl Job {
 }
 
 /// Result of a completed job.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct JobResult {
     pub output_path: PathBuf,
     pub duration: f64,
