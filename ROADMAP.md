@@ -1,6 +1,6 @@
 # Roadmap
 
-Nexum's roadmap will evolve as the architecture is validated and community feedback is incorporated.
+Nexum's roadmap tracks implemented foundations and the remaining work toward a stable, extensible platform.
 
 ## Phase 1 — Core
 
@@ -9,35 +9,45 @@ Nexum's roadmap will evolve as the architecture is validated and community feedb
 - [x] Download task state machine
 - [x] Scheduler
 - [x] Persistent storage
-- [x] Event bus
+- [x] Task events
 - [x] Engine Adapter interface
+- [x] Resolver foundation
 
 ## Phase 2 — Protocol
 
 - [x] Nexum Protocol
-- [x] Task CRUD
-- [x] Task control
-- [x] Progress events
-- [x] Authentication and authorization model
+- [x] Task CRUD and control
+- [x] Progress and task events
+- [x] Protocol version negotiation
+- [x] Authentication boundary
+- [x] Compatibility tests
 
 ## Phase 3 — Clients
 
-- [x] CLI foundation
 - [x] Server foundation
-- [x] Desktop foundation (Tauri 2.0 + React 19)
-- [ ] Browser integration
+- [x] CLI foundation and JSON-RPC client
+- [x] CLI task management
+- [x] Desktop foundation
+- [x] Browser integration
 
 ## Phase 4 — Extensibility
 
-- [x] Plugin manifest (id, name, version, description, author, license)
-- [x] Permission model (None, Read, Write, Network, Execute)
-- [x] Plugin SDK skeleton (Capability, PathPattern)
+- [x] Plugin manifest
+- [x] Permission model
+- [x] Capability API
+- [x] Plugin SDK skeleton
+- [ ] Plugin lifecycle
 - [ ] Resolver extensions
 - [ ] Engine extensions
 
 ## Phase 5 — Media & Automation
 
-- [ ] Media pipeline (MediaProbe, Track, MuxSpec)
+- [x] Foundational media data structures
+- [ ] Media probing workflow
+- [ ] Manifest parsing
+- [ ] Track selection
+- [ ] Segment scheduling
+- [ ] Mux/post-processing
 - [ ] Automation APIs
 - [ ] AI/MCP integration
 - [ ] Remote device management

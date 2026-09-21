@@ -26,8 +26,20 @@ pub struct RpcResult {
 }
 
 impl RpcResult {
-    pub fn ok(result: Value) -> Self { Self { success: true, result: Some(result), error: None } }
-    pub fn err(message: String) -> Self { Self { success: false, result: None, error: Some(message) } }
+    pub fn ok(result: Value) -> Self {
+        Self {
+            success: true,
+            result: Some(result),
+            error: None,
+        }
+    }
+    pub fn err(message: String) -> Self {
+        Self {
+            success: false,
+            result: None,
+            error: Some(message),
+        }
+    }
 }
 
 /// Call a JSON-RPC method on the server.
@@ -78,7 +90,10 @@ pub fn call_rpc(server: &str, method: &str, params: Option<Value>, timeout_ms: u
         Ok(response) => {
             if let Some(err) = response.get("error") {
                 if let Some(code) = err.get("code").and_then(|c| c.as_i64()) {
-                    let message = err.get("message").and_then(|m| m.as_str()).unwrap_or("unknown error");
+                    let message = err
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("unknown error");
                     RpcResult::err(format!("[{}] {}", code, message))
                 } else {
                     RpcResult::err("missing error code".to_owned())

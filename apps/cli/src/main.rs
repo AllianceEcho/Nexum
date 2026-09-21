@@ -1,4 +1,4 @@
-use nexum_protocol::{parse_request, serialize_response, RpcRequest, Credential};
+use nexum_protocol::{Credential, RpcRequest, parse_request, serialize_response};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
@@ -52,7 +52,9 @@ impl Config {
         std::fs::read_to_string(&file)
             .ok()
             .and_then(|content| {
-                content.lines().find(|l| l.trim().starts_with(&format!("{key}=")))
+                content
+                    .lines()
+                    .find(|l| l.trim().starts_with(&format!("{key}=")))
             })
             .and_then(|line| line.trim().split_once('='))
             .and_then(|(_, value)| Some(value.trim().to_owned()))
@@ -63,18 +65,20 @@ impl Config {
             .map_err(|e| format!("cannot create config directory: {e}"))?;
         let file = self.config_file();
         if file.is_file() {
-            let existing = std::fs::read_to_string(&file)
-                .map_err(|e| format!("cannot read config: {e}"))?;
-            let new_content: String = existing.lines()
-                .map(|l| if l.trim().starts_with(&format!("{key}=")) {
-                    format!("{key} = {value}")
-                } else {
-                    l.to_owned()
+            let existing =
+                std::fs::read_to_string(&file).map_err(|e| format!("cannot read config: {e}"))?;
+            let new_content: String = existing
+                .lines()
+                .map(|l| {
+                    if l.trim().starts_with(&format!("{key}=")) {
+                        format!("{key} = {value}")
+                    } else {
+                        l.to_owned()
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
-            std::fs::write(&file, new_content)
-                .map_err(|e| format!("cannot write config: {e}"))?;
+            std::fs::write(&file, new_content).map_err(|e| format!("cannot write config: {e}"))?;
         } else {
             std::fs::write(&file, format!("{key} = {value}"))
                 .map_err(|e| format!("cannot write config: {e}"))?;
@@ -88,7 +92,9 @@ impl Config {
 }
 
 impl Default for Config {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 pub struct JsonRpcClient {
@@ -98,21 +104,33 @@ pub struct JsonRpcClient {
 
 impl JsonRpcClient {
     pub fn connect(address: &str) -> Result<Self, String> {
-        let stream = TcpStream::connect(address).map_err(|e| format!("cannot connect to Nexum server at {address}: {e}"))?;
+        let stream = TcpStream::connect(address)
+            .map_err(|e| format!("cannot connect to Nexum server at {address}: {e}"))?;
         let reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
         Ok(Self { stream, reader })
     }
 
-    pub fn call_with_credential(&mut self, id: u64, method: &str, params: Option<Value>, credential: Option<Credential>) -> Result<Value, String> {
+    pub fn call_with_credential(
+        &mut self,
+        id: u64,
+        method: &str,
+        params: Option<Value>,
+        credential: Option<Credential>,
+    ) -> Result<Value, String> {
         let request = RpcRequest::new(id, method, params).with_credential(credential);
         let payload = serde_json::to_string(&request).map_err(|e| e.to_string())?;
-        self.stream.write_all(payload.as_bytes()).map_err(|e| e.to_string())?;
+        self.stream
+            .write_all(payload.as_bytes())
+            .map_err(|e| e.to_string())?;
         self.stream.write_all(b"\n").map_err(|e| e.to_string())?;
         self.stream.flush().map_err(|e| e.to_string())?;
 
         let mut line = String::new();
-        self.reader.read_line(&mut line).map_err(|e| e.to_string())?;
-        let response: nexum_protocol::RpcResponse = serde_json::from_str(&line).map_err(|e| e.to_string())?;
+        self.reader
+            .read_line(&mut line)
+            .map_err(|e| e.to_string())?;
+        let response: nexum_protocol::RpcResponse =
+            serde_json::from_str(&line).map_err(|e| e.to_string())?;
         if let Some(error) = response.error {
             return Err(format!("[{}] {}", error.code, error.message));
         }
@@ -125,7 +143,10 @@ impl JsonRpcClient {
 }
 
 fn format_rpc_error(response: &nexum_protocol::RpcResponse) -> Option<String> {
-    response.error.as_ref().map(|e| format!("[{}] {}", e.code, e.message))
+    response
+        .error
+        .as_ref()
+        .map(|e| format!("[{}] {}", e.code, e.message))
 }
 
 fn usage() {
@@ -180,7 +201,9 @@ fn main() {
         credential = Config::new().default_credential();
     }
 
-    if args.len() < 2 || (args[0] != "task" && args[0] != "config" && args[0] != "auth" && args[0] != "server") {
+    if args.len() < 2
+        || (args[0] != "task" && args[0] != "config" && args[0] != "auth" && args[0] != "server")
+    {
         usage();
         std::process::exit(2);
     }
@@ -190,52 +213,93 @@ fn main() {
 
     let (method, params) = match (args[0].as_str(), args[1].as_str()) {
         ("task", "list") if args.len() == 2 => ("task.list", None),
-        ("task", "get") if args.len() == 3 => ("task.get", Some(serde_json::json!({"id": args[2]}))),
-        ("task", "create") if args.len() == 5 => ("task.create", Some(serde_json::json!({"id": args[2], "source": args[3], "destination": args[4]}))),
-        ("task", "queue") if args.len() == 3 => ("task.queue", Some(serde_json::json!({"id": args[2]}))),
+        ("task", "get") if args.len() == 3 => {
+            ("task.get", Some(serde_json::json!({"id": args[2]})))
+        }
+        ("task", "create") if args.len() == 5 => (
+            "task.create",
+            Some(serde_json::json!({"id": args[2], "source": args[3], "destination": args[4]})),
+        ),
+        ("task", "queue") if args.len() == 3 => {
+            ("task.queue", Some(serde_json::json!({"id": args[2]})))
+        }
         ("task", "start") if args.len() == 2 => ("task.start", None),
-        ("task", "pause") if args.len() == 3 => ("task.pause", Some(serde_json::json!({"id": args[2]}))),
-        ("task", "resume") if args.len() == 3 => ("task.resume", Some(serde_json::json!({"id": args[2]}))),
-        ("task", "remove") if args.len() == 3 => ("task.remove", Some(serde_json::json!({"id": args[2]}))),
+        ("task", "pause") if args.len() == 3 => {
+            ("task.pause", Some(serde_json::json!({"id": args[2]})))
+        }
+        ("task", "resume") if args.len() == 3 => {
+            ("task.resume", Some(serde_json::json!({"id": args[2]})))
+        }
+        ("task", "remove") if args.len() == 3 => {
+            ("task.remove", Some(serde_json::json!({"id": args[2]})))
+        }
         ("server", "version") if args.len() == 2 => ("server.version", None),
         ("server", "auth") if args.len() == 2 => ("server.auth", None),
         ("server", "ping") => {
             // Ping queries both server.version and server.auth
             verify_version = false;
-            ("server.version", None)
-        }
             match get_server_address() {
                 Ok(addr) => {
                     println!("{addr}");
                     return;
                 }
-                Err(e) => { eprintln!("{e}"); std::process::exit(1); }
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
             }
+            ("server.version", None)
         }
         ("config", "set-server") if args.len() == 3 => {
             match Config::new().set_server_address(&args[2]) {
-                Ok(()) => { println!("Server address set to {}", args[2]); return; }
-                Err(e) => { eprintln!("{e}"); std::process::exit(1); }
+                Ok(()) => {
+                    println!("Server address set to {}", args[2]);
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
             }
         }
         ("auth", "set") if args.len() == 4 => {
             match Config::new().set_credential(&args[2], &args[3]) {
-                Ok(()) => { println!("Authentication set: {} (token: {}...)", args[2], &args[3].chars().take(4).collect::<String>()); return; }
-                Err(e) => { eprintln!("{e}"); std::process::exit(1); }
+                Ok(()) => {
+                    println!(
+                        "Authentication set: {} (token: {}...)",
+                        args[2],
+                        &args[3].chars().take(4).collect::<String>()
+                    );
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
             }
         }
-        ("auth", "clear") => {
-            match Config::new().write_config_value("default_auth_scheme", "") {
-                Ok(()) => { println!("Authentication cleared"); return; }
-                Err(e) => { eprintln!("{e}"); std::process::exit(1); }
+        ("auth", "clear") => match Config::new().write_config_value("default_auth_scheme", "") {
+            Ok(()) => {
+                println!("Authentication cleared");
+                return;
             }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        },
+        _ => {
+            usage();
+            std::process::exit(2);
         }
-        _ => { usage(); std::process::exit(2); }
     };
 
     let mut client = match JsonRpcClient::connect(&address) {
         Ok(client) => client,
-        Err(error) => { eprintln!("{error}"); std::process::exit(1); }
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
     };
 
     // Verify server version on first connection (unless explicitly skipping)
@@ -244,7 +308,9 @@ fn main() {
             if let Some(Ok(server_ver)) = response.as_str().map(|v| Ok::<_, String>(v.to_owned())) {
                 let local_ver = nexum_protocol::RpcDispatcher::version();
                 if server_ver != local_ver {
-                    eprintln!("warning: server protocol v{server_ver} differs from client v{local_ver}");
+                    eprintln!(
+                        "warning: server protocol v{server_ver} differs from client v{local_ver}"
+                    );
                 } else {
                     eprintln!("connected: server protocol v{server_ver}");
                 }
@@ -253,8 +319,14 @@ fn main() {
     }
 
     match client.call_with_credential(1, method, params, credential) {
-        Ok(value) => println!("{}", serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())),
-        Err(error) => { eprintln!("{error}"); std::process::exit(1); }
+        Ok(value) => println!(
+            "{}",
+            serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())
+        ),
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
     }
 }
 

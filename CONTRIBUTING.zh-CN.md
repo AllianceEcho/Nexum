@@ -8,7 +8,7 @@ Nexum 目前处于早期开发阶段。为了保持核心架构清晰，我们�
 
 ## 提交前
 
-1. 阅读 [开发指南](docs/DEVELOPMENT.md)。
+1. 阅读 [开发指南](docs/DEVELOPMENT.zh-CN.md)。
 2. 确认 Issue、Discussion 或 RFC 中已经记录了相关背景（如果适用）。
 3. 保持改动范围清晰，避免把无关重构混入功能或修复。
 4. 为行为变化补充测试和文档。

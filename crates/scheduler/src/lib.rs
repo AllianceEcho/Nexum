@@ -1,7 +1,7 @@
 //! Queue, retry, pause/resume, and concurrency policy for Nexum task scheduling.
 
 use nexum_domain::TaskId;
-use nexum_task::{InvalidTransition, TaskService, TaskState, TaskServiceError};
+use nexum_task::{InvalidTransition, TaskService, TaskServiceError, TaskState};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -12,8 +12,12 @@ impl Priority {
     pub const NORMAL: Self = Self(50);
     pub const HIGH: Self = Self(100);
 
-    pub const fn new(value: u8) -> Self { Self(value) }
-    pub const fn value(self) -> u8 { self.0 }
+    pub const fn new(value: u8) -> Self {
+        Self(value)
+    }
+    pub const fn value(self) -> u8 {
+        self.0
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -60,7 +64,9 @@ impl BandwidthPolicy for PerTaskBandwidth {
 }
 
 impl Default for RetryPolicy {
-    fn default() -> Self { Self { max_retries: 3 } }
+    fn default() -> Self {
+        Self { max_retries: 3 }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -78,7 +84,9 @@ pub enum BandwidthPolicyKind {
 }
 
 impl Default for BandwidthPolicyKind {
-    fn default() -> Self { Self::Unlimited }
+    fn default() -> Self {
+        Self::Unlimited
+    }
 }
 
 impl BandwidthPolicy for BandwidthPolicyKind {
@@ -86,7 +94,9 @@ impl BandwidthPolicy for BandwidthPolicyKind {
         match self {
             Self::Unlimited => None,
             Self::Fixed { bytes_per_second } => Some(*bytes_per_second),
-            Self::Shared { total_bytes_per_second } => {
+            Self::Shared {
+                total_bytes_per_second,
+            } => {
                 if active_tasks == 0 {
                     Some(*total_bytes_per_second)
                 } else {
@@ -132,7 +142,9 @@ pub enum SchedulerError {
 }
 
 impl From<TaskServiceError> for SchedulerError {
-    fn from(value: TaskServiceError) -> Self { Self::Task(value) }
+    fn from(value: TaskServiceError) -> Self {
+        Self::Task(value)
+    }
 }
 
 /// Deterministic in-memory scheduler.
@@ -172,16 +184,15 @@ impl Scheduler {
     ) -> Result<(), SchedulerError> {
         task_service.transition(task_id, TaskState::Queued)?;
         self.push_queue(task_id, priority);
-        self.events.push(SchedulerEvent::Enqueued { task_id: task_id.clone(), priority });
+        self.events.push(SchedulerEvent::Enqueued {
+            task_id: task_id.clone(),
+            priority,
+        });
         Ok(())
     }
 
     /// Restores a queued task after process restart without changing its persisted state.
-    pub fn restore_queued(
-        &mut self,
-        task_id: &TaskId,
-        priority: Priority,
-    ) {
+    pub fn restore_queued(&mut self, task_id: &TaskId, priority: Priority) {
         self.push_queue(task_id, priority);
     }
 
@@ -192,10 +203,14 @@ impl Scheduler {
         if self.active_tasks >= self.config.max_concurrent_tasks {
             return Ok(None);
         }
-        let Some(entry) = self.queue.pop_front() else { return Ok(None); };
+        let Some(entry) = self.queue.pop_front() else {
+            return Ok(None);
+        };
         task_service.transition(&entry.task_id, TaskState::Downloading)?;
         self.active_tasks += 1;
-        self.events.push(SchedulerEvent::Started { task_id: entry.task_id.clone() });
+        self.events.push(SchedulerEvent::Started {
+            task_id: entry.task_id.clone(),
+        });
         Ok(Some(entry.task_id))
     }
 
@@ -206,7 +221,9 @@ impl Scheduler {
     ) -> Result<(), SchedulerError> {
         task_service.transition(task_id, TaskState::Paused)?;
         self.active_tasks = self.active_tasks.saturating_sub(1);
-        self.events.push(SchedulerEvent::Paused { task_id: task_id.clone() });
+        self.events.push(SchedulerEvent::Paused {
+            task_id: task_id.clone(),
+        });
         Ok(())
     }
 
@@ -220,7 +237,9 @@ impl Scheduler {
         }
         task_service.transition(task_id, TaskState::Downloading)?;
         self.active_tasks += 1;
-        self.events.push(SchedulerEvent::Resumed { task_id: task_id.clone() });
+        self.events.push(SchedulerEvent::Resumed {
+            task_id: task_id.clone(),
+        });
         Ok(true)
     }
 
@@ -232,7 +251,10 @@ impl Scheduler {
     ) -> Result<(), SchedulerError> {
         if !matches!(state, TaskState::Completed | TaskState::Failed) {
             return Err(SchedulerError::Task(TaskServiceError::InvalidTransition(
-                InvalidTransition { from: TaskState::Downloading, to: state },
+                InvalidTransition {
+                    from: TaskState::Downloading,
+                    to: state,
+                },
             )));
         }
 
@@ -242,7 +264,9 @@ impl Scheduler {
         match state {
             TaskState::Completed => {
                 self.retry_counts.remove(task_id);
-                self.events.push(SchedulerEvent::Completed { task_id: task_id.clone() });
+                self.events.push(SchedulerEvent::Completed {
+                    task_id: task_id.clone(),
+                });
             }
             TaskState::Failed => {
                 let attempt = self.retry_counts.entry(task_id.clone()).or_insert(0);
@@ -258,7 +282,9 @@ impl Scheduler {
                     });
                 } else {
                     self.retry_counts.remove(task_id);
-                    self.events.push(SchedulerEvent::Failed { task_id: task_id.clone() });
+                    self.events.push(SchedulerEvent::Failed {
+                        task_id: task_id.clone(),
+                    });
                 }
             }
             _ => unreachable!(),
@@ -266,11 +292,17 @@ impl Scheduler {
         Ok(())
     }
 
-    pub fn queued_len(&self) -> usize { self.queue.len() }
-    pub fn active_len(&self) -> usize { self.active_tasks }
+    pub fn queued_len(&self) -> usize {
+        self.queue.len()
+    }
+    pub fn active_len(&self) -> usize {
+        self.active_tasks
+    }
 
     pub fn bandwidth_limit_bytes_per_second(&self) -> Option<u64> {
-        self.config.bandwidth_policy.limit_bytes_per_second(self.active_tasks)
+        self.config
+            .bandwidth_policy
+            .limit_bytes_per_second(self.active_tasks)
     }
 
     pub fn drain_events(&mut self) -> Vec<SchedulerEvent> {
@@ -290,7 +322,9 @@ impl Scheduler {
     fn sort_queue(&mut self) {
         let mut entries: Vec<_> = self.queue.drain(..).collect();
         entries.sort_by(|a, b| {
-            b.priority.cmp(&a.priority).then_with(|| a.sequence.cmp(&b.sequence))
+            b.priority
+                .cmp(&a.priority)
+                .then_with(|| a.sequence.cmp(&b.sequence))
         });
         self.queue = entries.into();
     }
@@ -306,11 +340,13 @@ mod tests {
         let mut ids = Vec::new();
         for index in 0..count {
             let id = TaskId::from(format!("task-{index}"));
-            service.create(
-                id.clone(),
-                DownloadSource::new(format!("https://example.com/{index}")),
-                Destination::new(format!("/tmp/{index}")),
-            ).unwrap();
+            service
+                .create(
+                    id.clone(),
+                    DownloadSource::new(format!("https://example.com/{index}")),
+                    Destination::new(format!("/tmp/{index}")),
+                )
+                .unwrap();
             ids.push(id);
         }
         (service, ids)
@@ -331,10 +367,18 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             ..SchedulerConfig::default()
-        }).unwrap();
-        scheduler.enqueue(&mut service, &ids[0], Priority::NORMAL).unwrap();
-        scheduler.enqueue(&mut service, &ids[1], Priority::NORMAL).unwrap();
-        assert_eq!(scheduler.start_next(&mut service).unwrap(), Some(ids[0].clone()));
+        })
+        .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[0], Priority::NORMAL)
+            .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[1], Priority::NORMAL)
+            .unwrap();
+        assert_eq!(
+            scheduler.start_next(&mut service).unwrap(),
+            Some(ids[0].clone())
+        );
         assert_eq!(scheduler.start_next(&mut service).unwrap(), None);
         assert_eq!(scheduler.active_len(), 1);
         assert_eq!(scheduler.queued_len(), 1);
@@ -344,19 +388,36 @@ mod tests {
     fn higher_priority_starts_first() {
         let (mut service, ids) = service_with_tasks(2);
         let mut scheduler = Scheduler::new(SchedulerConfig::default()).unwrap();
-        scheduler.enqueue(&mut service, &ids[0], Priority::LOW).unwrap();
-        scheduler.enqueue(&mut service, &ids[1], Priority::HIGH).unwrap();
-        assert_eq!(scheduler.start_next(&mut service).unwrap(), Some(ids[1].clone()));
+        scheduler
+            .enqueue(&mut service, &ids[0], Priority::LOW)
+            .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[1], Priority::HIGH)
+            .unwrap();
+        assert_eq!(
+            scheduler.start_next(&mut service).unwrap(),
+            Some(ids[1].clone())
+        );
     }
 
     #[test]
     fn equal_priority_preserves_fifo_order() {
         let (mut service, ids) = service_with_tasks(2);
         let mut scheduler = Scheduler::new(SchedulerConfig::default()).unwrap();
-        scheduler.enqueue(&mut service, &ids[0], Priority::NORMAL).unwrap();
-        scheduler.enqueue(&mut service, &ids[1], Priority::NORMAL).unwrap();
-        assert_eq!(scheduler.start_next(&mut service).unwrap(), Some(ids[0].clone()));
-        assert_eq!(scheduler.start_next(&mut service).unwrap(), Some(ids[1].clone()));
+        scheduler
+            .enqueue(&mut service, &ids[0], Priority::NORMAL)
+            .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[1], Priority::NORMAL)
+            .unwrap();
+        assert_eq!(
+            scheduler.start_next(&mut service).unwrap(),
+            Some(ids[0].clone())
+        );
+        assert_eq!(
+            scheduler.start_next(&mut service).unwrap(),
+            Some(ids[1].clone())
+        );
     }
 
     #[test]
@@ -365,13 +426,23 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             ..SchedulerConfig::default()
-        }).unwrap();
-        scheduler.enqueue(&mut service, &ids[0], Priority::NORMAL).unwrap();
-        scheduler.enqueue(&mut service, &ids[1], Priority::NORMAL).unwrap();
+        })
+        .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[0], Priority::NORMAL)
+            .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[1], Priority::NORMAL)
+            .unwrap();
         scheduler.start_next(&mut service).unwrap();
-        scheduler.mark_finished(&mut service, &ids[0], TaskState::Completed).unwrap();
+        scheduler
+            .mark_finished(&mut service, &ids[0], TaskState::Completed)
+            .unwrap();
         assert_eq!(scheduler.active_len(), 0);
-        assert_eq!(scheduler.start_next(&mut service).unwrap(), Some(ids[1].clone()));
+        assert_eq!(
+            scheduler.start_next(&mut service).unwrap(),
+            Some(ids[1].clone())
+        );
     }
 
     #[test]
@@ -380,9 +451,14 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             ..SchedulerConfig::default()
-        }).unwrap();
-        scheduler.enqueue(&mut service, &ids[0], Priority::NORMAL).unwrap();
-        scheduler.enqueue(&mut service, &ids[1], Priority::NORMAL).unwrap();
+        })
+        .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[0], Priority::NORMAL)
+            .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[1], Priority::NORMAL)
+            .unwrap();
         scheduler.start_next(&mut service).unwrap();
         scheduler.pause(&mut service, &ids[0]).unwrap();
         assert_eq!(scheduler.active_len(), 0);
@@ -397,9 +473,14 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             ..SchedulerConfig::default()
-        }).unwrap();
-        scheduler.enqueue(&mut service, &ids[0], Priority::NORMAL).unwrap();
-        scheduler.enqueue(&mut service, &ids[1], Priority::NORMAL).unwrap();
+        })
+        .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[0], Priority::NORMAL)
+            .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[1], Priority::NORMAL)
+            .unwrap();
         scheduler.start_next(&mut service).unwrap();
         scheduler.pause(&mut service, &ids[0]).unwrap();
         scheduler.start_next(&mut service).unwrap();
@@ -413,17 +494,26 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             retry_policy: RetryPolicy { max_retries: 2 },
-        }).unwrap();
-        scheduler.enqueue(&mut service, &ids[0], Priority::NORMAL).unwrap();
+        })
+        .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[0], Priority::NORMAL)
+            .unwrap();
         scheduler.start_next(&mut service).unwrap();
-        scheduler.mark_finished(&mut service, &ids[0], TaskState::Failed).unwrap();
+        scheduler
+            .mark_finished(&mut service, &ids[0], TaskState::Failed)
+            .unwrap();
         assert_eq!(service.get(&ids[0]).unwrap().state, TaskState::Queued);
         assert_eq!(scheduler.queued_len(), 1);
         assert_eq!(scheduler.active_len(), 0);
         scheduler.start_next(&mut service).unwrap();
-        scheduler.mark_finished(&mut service, &ids[0], TaskState::Failed).unwrap();
+        scheduler
+            .mark_finished(&mut service, &ids[0], TaskState::Failed)
+            .unwrap();
         scheduler.start_next(&mut service).unwrap();
-        scheduler.mark_finished(&mut service, &ids[0], TaskState::Failed).unwrap();
+        scheduler
+            .mark_finished(&mut service, &ids[0], TaskState::Failed)
+            .unwrap();
         assert_eq!(service.get(&ids[0]).unwrap().state, TaskState::Failed);
         assert_eq!(scheduler.queued_len(), 0);
         assert_eq!(scheduler.active_len(), 0);
@@ -438,11 +528,16 @@ mod tests {
                 total_bytes_per_second: 1_000,
             },
             ..SchedulerConfig::default()
-        }).unwrap();
+        })
+        .unwrap();
 
         assert_eq!(scheduler.bandwidth_limit_bytes_per_second(), Some(1_000));
-        scheduler.enqueue(&mut service, &ids[0], Priority::NORMAL).unwrap();
-        scheduler.enqueue(&mut service, &ids[1], Priority::NORMAL).unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[0], Priority::NORMAL)
+            .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[1], Priority::NORMAL)
+            .unwrap();
         scheduler.start_next(&mut service).unwrap();
         assert_eq!(scheduler.bandwidth_limit_bytes_per_second(), Some(1_000));
         scheduler.start_next(&mut service).unwrap();
@@ -455,14 +550,30 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             retry_policy: RetryPolicy { max_retries: 1 },
-        }).unwrap();
-        scheduler.enqueue(&mut service, &ids[0], Priority::HIGH).unwrap();
+        })
+        .unwrap();
+        scheduler
+            .enqueue(&mut service, &ids[0], Priority::HIGH)
+            .unwrap();
         scheduler.start_next(&mut service).unwrap();
-        scheduler.mark_finished(&mut service, &ids[0], TaskState::Failed).unwrap();
-        assert_eq!(scheduler.drain_events(), vec![
-            SchedulerEvent::Enqueued { task_id: ids[0].clone(), priority: Priority::HIGH },
-            SchedulerEvent::Started { task_id: ids[0].clone() },
-            SchedulerEvent::Retrying { task_id: ids[0].clone(), attempt: 1 },
-        ]);
+        scheduler
+            .mark_finished(&mut service, &ids[0], TaskState::Failed)
+            .unwrap();
+        assert_eq!(
+            scheduler.drain_events(),
+            vec![
+                SchedulerEvent::Enqueued {
+                    task_id: ids[0].clone(),
+                    priority: Priority::HIGH
+                },
+                SchedulerEvent::Started {
+                    task_id: ids[0].clone()
+                },
+                SchedulerEvent::Retrying {
+                    task_id: ids[0].clone(),
+                    attempt: 1
+                },
+            ]
+        );
     }
 }

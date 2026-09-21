@@ -2,87 +2,105 @@
 
 ## 总体结构
 
-Nexum 将下载能力组织为分层架构：
+Nexum 以 Core 和 Protocol 边界为中心组织：
 
 ```text
-Client
-  │
-  ▼
-Nexum Protocol
-  │
-  ▼
-Nexum Core
-  ├── Task
-  ├── Scheduler
-  ├── Resolver
-  ├── Storage
-  ├── Plugin
-  └── Engine Adapter
-          ├── curl
-          ├── aria2
-          └── libtorrent
+ Desktop ───────┐
+ Browser ───────┤
+ CLI ───────────┤
+                ▼
+         Nexum Protocol
+                │
+                ▼
+           Nexum Core
+        ┌───────┼────────┐
+        │       │        │
+     Storage Resolver  Scheduler
+                        │
+                        ▼
+                 Engine Adapter
+                  /          \
+             InMemory        HTTP
 ```
+
+当前 Server 与 CLI 使用基于 TCP 的按行 JSON-RPC。Protocol 保持传输层中立，因此后续可以在不让 Core 依赖网络实现的情况下增加其他传输方式。
 
 ## 核心原则
 
 ### Core-first
 
-下载任务的生命周期、调度、状态和事件由 Core 统一管理。
+Core 负责任务生命周期、调度、状态转换、事件收集与整体编排。
 
 ### Protocol-first
 
-客户端不直接依赖内部实现，而是通过稳定的 Protocol 与 Core 通信。
+客户端通过稳定的 Protocol 操作与 Core 通信，而不是直接依赖 Core 内部实现。
 
 ### Local-first
 
-本地运行是默认路径；协议和身份模型同时为远程部署保留扩展能力。
+默认 Server 绑定本地地址，同时支持配置远程 Server 连接。
+
+### Extensible
+
+Resolver、Engine Adapter、Plugin 与 SDK 都是明确的扩展边界。
 
 ## 任务模型
 
-核心任务状态遵循明确的状态机：
+任务生命周期：
 
 ```text
 Created → Queued → Downloading
                        ├→ Paused
                        ├→ Completed
-                       └→ Failed → Retry
+                       └→ Failed → Retrying → Queued
 ```
 
-持久化数据进入 Storage；实时状态和事件由 Core 管理。
+持久化任务状态通过 Storage Repository 边界管理；运行时状态和事件由 Core 管理。
 
 ## Resolver
 
-统一输入经过 Resolver 转换：
+输入处理路径：
 
 ```text
-Input → Resolver → ResolvedDownload → DownloadTask → Scheduler → Engine
+Input → Resolver → DownloadTask → Scheduler → Engine
 ```
+
+当前 Resolver 基础能力覆盖 HTTP/HTTPS、Magnet 与本地来源。
 
 ## Engine Adapter
 
-引擎通过统一接口接入 Core。Core 不应依赖某个具体引擎的内部数据结构。
+引擎通过统一 Adapter 接口接入。Core 使用 capabilities、task mapping、progress 与生命周期操作，而不是依赖具体引擎的内部数据结构。
 
-## Event Model
+当前仓库包含受控 InMemory Engine 和 HTTP Engine。后续引擎可以继续通过同一边界接入。
 
-典型事件包括：
+## Protocol
 
-- TaskCreated
-- TaskQueued
-- TaskStarted
-- TaskProgress
-- TaskPaused
-- TaskResumed
-- TaskCompleted
-- TaskFailed
-- TaskRetrying
-- TaskRemoved
+当前 Protocol 提供：
 
-后续协议会定义这些事件的稳定表示。
+- JSON-RPC 2.0 请求/响应
+- Task API
+- 标准错误码与应用错误码
+- 传输中立事件信封
+- Protocol 版本协商
+- 鉴权边界
+- Compatibility Tests
 
-## 数据存储
+Protocol 不绑定具体网络传输方式。
 
-SQLite 用于持久化任务元数据、配置和必要的历史信息。实时下载状态不以数据库轮询作为唯一来源，而由 Core 的事件模型驱动。
+## Server 与客户端
+
+Server 通过 TCP JSON-RPC 暴露 Core。CLI、Desktop 与 Browser 都通过 Protocol 工作，而不是直接调用 Core。
+
+Desktop 使用 Tauri 2 + React；Browser 使用 Manifest V3 扩展。
+
+## Storage
+
+SQLite 提供任务元数据持久化、Schema Versioning、Migration 与重启恢复。InMemory Storage 继续用于测试和轻量运行场景。
 
 ## 扩展
 
-插件通过 Manifest、Permission 和 Capability API 获得明确能力边界。扩展 API 应尽量与 Core 内部实现解耦。
+Plugin 基础设施已经包含 Manifest、Permission、Capability 与 SDK 结构。插件生命周期管理和可执行插件集成仍属于后续工作。
+
+## Media
+
+Media crate 当前提供基础媒体类型和探测结构。完整媒体探测工作流、分段调度、Mux 与自动化仍属于后续计划。
+

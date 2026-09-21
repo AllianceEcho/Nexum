@@ -1,11 +1,11 @@
 //! Nexum TCP server with configuration support.
 
 use nexum_core::Core;
-use nexum_protocol::{parse_request, serialize_response, RpcDispatcher, Credential};
+use nexum_protocol::{Credential, RpcDispatcher, parse_request, serialize_response};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 /// Server configuration loaded from a simple config file or defaults.
 #[derive(Debug)]
@@ -38,13 +38,27 @@ impl ServerConfig {
         let mut require_auth = None;
         for line in content.lines() {
             let line = line.trim();
-            if line.is_empty() || line.starts_with('#') { continue; }
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
             if let Some((key, value)) = line.split_once('=') {
                 match key.trim() {
-                    "port" => { if let Ok(p) = value.trim().parse::<u16>() { port = Some(p); } }
-                    "max_connections" => { if let Ok(m) = value.trim().parse::<usize>() { max_connections = Some(m); } }
-                    "data_dir" => { data_dir = Some(PathBuf::from(value.trim())); }
-                    "require_auth" => { require_auth = Some(value.trim().parse::<bool>().unwrap_or(false)); }
+                    "port" => {
+                        if let Ok(p) = value.trim().parse::<u16>() {
+                            port = Some(p);
+                        }
+                    }
+                    "max_connections" => {
+                        if let Ok(m) = value.trim().parse::<usize>() {
+                            max_connections = Some(m);
+                        }
+                    }
+                    "data_dir" => {
+                        data_dir = Some(PathBuf::from(value.trim()));
+                    }
+                    "require_auth" => {
+                        require_auth = Some(value.trim().parse::<bool>().unwrap_or(false));
+                    }
                     _ => {}
                 }
             }
@@ -170,10 +184,18 @@ fn parse_cli_flags() -> (ServerConfig, PathBuf, bool, bool) {
     // Load from config file if provided, applying file defaults only where CLI didn't override
     if !config_path.is_empty() {
         if let Ok(file_config) = ServerConfig::from_file(config_path.to_str().unwrap_or("")) {
-            if !has_cli_port { config.port = file_config.port; }
-            if !has_cli_data_dir { config.data_dir = file_config.data_dir; }
-            if !has_cli_max_connections { config.max_connections = file_config.max_connections; }
-            if !has_cli_require_auth { config.require_auth = file_config.require_auth; }
+            if !has_cli_port {
+                config.port = file_config.port;
+            }
+            if !has_cli_data_dir {
+                config.data_dir = file_config.data_dir;
+            }
+            if !has_cli_max_connections {
+                config.max_connections = file_config.max_connections;
+            }
+            if !has_cli_require_auth {
+                config.require_auth = file_config.require_auth;
+            }
         }
     }
 
@@ -215,7 +237,10 @@ fn main() -> std::io::Result<()> {
     let core = Arc::new(Mutex::new(Core::default()));
 
     eprintln!("Nexum server listening on {address}");
-    eprintln!("max_connections: {}, data_dir: {:?}", config.max_connections, config.data_dir);
+    eprintln!(
+        "max_connections: {}, data_dir: {:?}",
+        config.max_connections, config.data_dir
+    );
 
     for connection in listener.incoming() {
         match connection {

@@ -15,7 +15,9 @@ pub enum Credential {
 }
 
 impl Default for Credential {
-    fn default() -> Self { Self::None }
+    fn default() -> Self {
+        Self::None
+    }
 }
 
 impl std::fmt::Display for Credential {
@@ -37,14 +39,18 @@ pub enum AuthenticationScheme {
 }
 
 impl Default for AuthenticationScheme {
-    fn default() -> Self { Self::None }
+    fn default() -> Self {
+        Self::None
+    }
 }
 
 impl AuthenticationScheme {
     /// Extract the scheme from an Authorization header value.
     pub fn from_header(value: &str) -> Self {
         let value = value.trim();
-        if value.is_empty() { return Self::None; }
+        if value.is_empty() {
+            return Self::None;
+        }
         if let Some(token) = value.strip_prefix("Bearer ") {
             Self::Bearer(token.trim().to_owned())
         } else if let Some(key) = value.strip_prefix("ApiKey ") {
@@ -96,17 +102,26 @@ pub struct CredentialStore {
 }
 
 impl CredentialStore {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn add(&mut self, credential: Credential) {
         self.credentials.push(credential);
     }
 
-    pub fn validate(&self, scheme: &AuthenticationScheme) -> Result<&Credential, AuthenticationError> {
+    pub fn validate(
+        &self,
+        scheme: &AuthenticationScheme,
+    ) -> Result<&Credential, AuthenticationError> {
         match scheme {
             AuthenticationScheme::None => Ok(&Credential::None),
             _ => {
-                if self.credentials.iter().any(|c| matches!(c, Credential::None)) {
+                if self
+                    .credentials
+                    .iter()
+                    .any(|c| matches!(c, Credential::None))
+                {
                     Ok(&Credential::None)
                 } else {
                     Err(AuthenticationError::Invalid)
@@ -154,7 +169,10 @@ mod tests {
 
     #[test]
     fn empty_header_returns_none() {
-        assert_eq!(AuthenticationScheme::from_header(""), AuthenticationScheme::None);
+        assert_eq!(
+            AuthenticationScheme::from_header(""),
+            AuthenticationScheme::None
+        );
     }
 
     #[test]
@@ -179,7 +197,12 @@ mod tests {
     fn credential_display_hides_secrets() {
         let none = format!("{}", Credential::None);
         assert_eq!(none, "none");
-        let bearer = format!("{}", Credential::Bearer { token: "secret".into() });
+        let bearer = format!(
+            "{}",
+            Credential::Bearer {
+                token: "secret".into()
+            }
+        );
         assert_eq!(bearer, "Bearer <redacted>");
     }
 }

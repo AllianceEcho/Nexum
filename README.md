@@ -18,29 +18,56 @@ Core principles:
 
 ## Components
 
-- **Nexum Core** — task lifecycle, scheduling, state, events, and coordination.
-- **Nexum Protocol** — unified communication between clients and the core (JSON-RPC 2.0, version negotiation, auth boundary).
-- **Engine Adapter** — integration layer for download engines (InMemory, HTTP with redirect following).
-- **Resolver** — turns inputs such as URLs and Magnet links into normalized download tasks.
-- **Server** — remote download services (TCP, configurable, graceful shutdown).
-- **CLI** — terminal and automation interface (JSON-RPC client, config management, auth).
-- **Desktop** — Tauri + React desktop application (full task management).
-- **Browser** — browser integration (planned).
-- **Plugin SDK** — APIs for extensions and third-party capabilities (manifest, permissions, capabilities skeleton).
+- **Nexum Core** — task lifecycle, scheduling, state, events, persistence coordination, and orchestration.
+- **Nexum Protocol** — JSON-RPC 2.0 request/response APIs, protocol version negotiation, authentication boundary, and transport-neutral events.
+- **Engine Adapter** — common engine boundary with the controlled InMemory engine and HTTP engine.
+- **Resolver** — source classification and validation for HTTP/HTTPS, Magnet, and local sources.
+- **Server** — TCP JSON-RPC service with configurable runtime settings and authentication support.
+- **CLI** — terminal client for task operations, server configuration, authentication, and server inspection.
+- **Desktop** — Tauri 2 + React desktop client for task management and server configuration.
+- **Browser** — Manifest V3 browser integration for sending downloadable links to Nexum.
+- **Plugin SDK** — plugin manifest, permissions, capabilities, and SDK foundations.
+- **Media** — foundational media types and probing structures for later media workflows.
+
+## Architecture
+
+```text
+ Desktop ───────┐
+ Browser ───────┤
+ CLI ───────────┤
+                ▼
+         Nexum Protocol
+                │
+                ▼
+           Nexum Core
+        ┌───────┼────────┐
+        │       │        │
+     Storage Resolver  Scheduler
+                        │
+                        ▼
+                 Engine Adapter
+                  /          \
+             InMemory        HTTP
+```
+
+The Protocol is intentionally transport-neutral. The current server/client foundation uses line-delimited JSON-RPC over TCP; additional transports can be added without changing Core APIs.
 
 ## Development Status
 
-**Phase 0–7: Core completed.** Phase 8 (Desktop): Tauri + React with full task management. Phase 9–11: Browser extension, plugin SDK, media & automation.
+Phases 0–9 have working foundations in the repository. Phase 10 provides plugin manifest, permission, capability, and SDK foundations. Media and automation work remains planned.
 
-- Core task lifecycle with state machine (Created → Queued → Downloading → Completed/Failed/Paused/Retrying)
-- JSON-RPC 2.0 protocol with version negotiation and auth boundary
-- Scheduler with priority, concurrency limits, retry policy, bandwidth control
-- Storage: In-memory and SQLite with schema migration and recovery
-- Resolver: HTTP/HTTPS, Magnet, Local source classification
-- Engine Adapters: InMemory (full lifecycle), HTTP (redirect following, progress)
-- Server: TCP with configurable settings, credentials, graceful shutdown
-- CLI: Full task CRUD, config management, authentication, server commands
-- Desktop: Tauri 2.0 + React 19 with task list, create, queue, pause/resume, remove
+Current highlights:
+
+- Core task lifecycle and scheduler
+- SQLite persistence and restart recovery
+- Resolver registry with HTTP/HTTPS, Magnet, and local source handling
+- Engine Adapter boundary with InMemory and HTTP engines
+- JSON-RPC 2.0 task APIs, events, version negotiation, and authentication boundary
+- TCP server and CLI client
+- Tauri 2 + React desktop application
+- Manifest V3 browser extension
+- Plugin manifest, permissions, capabilities, and SDK skeleton
+- Foundational media data structures
 
 See:
 
@@ -50,6 +77,7 @@ See:
 - [Contributing](CONTRIBUTING.md)
 - [Governance](GOVERNANCE.md)
 - [Development Plan](docs/DEVELOPMENT_PLAN.md)
+- [Changelog](CHANGELOG.md)
 
 For the Chinese version, see [README.zh-CN.md](README.zh-CN.md).
 

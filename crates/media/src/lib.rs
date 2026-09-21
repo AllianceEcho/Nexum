@@ -4,11 +4,120 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-// Re-export existing types (backward compatible)
-pub use {MediaType, MediaSubtype, Track, MediaProbe, MediaSegment, MediaManifest, TrackSelection, SchedulePolicy, PipelineStep, MediaPipeline, MediaAnalysis, McpMediaRequest, MuxSpec};
+// Media pipeline types (defined locally since nexum_protocol lacks these)
+
+/// Media file type.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub enum MediaType {
+    Video,
+    Audio,
+    Image,
+    Other(String),
+}
+
+/// Media file subtype.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MediaSubtype(pub String);
+
+/// A mux specification for output format.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MuxSpec {
+    pub format: String,
+    pub container: Option<String>,
+}
+
+/// A single step in a processing pipeline.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct PipelineStep {
+    pub id: u32,
+    pub name: String,
+    pub r#type: String,
+    pub input: Option<PathBuf>,
+    pub output: Option<PathBuf>,
+}
+
+/// Schedule policy for a media job.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum SchedulePolicy {
+    Immediate,
+    Delayed(u64),
+    Cron(String),
+}
+
+/// A media track (audio/video).
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct Track {
+    pub id: u32,
+    pub codec: String,
+    pub bitrate: Option<u64>,
+    pub duration: Option<f64>,
+}
+
+/// Selection criteria for a track.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum TrackSelection {
+    All,
+    ById(Vec<u32>),
+    ByCodec(String),
+}
+
+/// A media probe result (file analysis).
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct MediaProbe {
+    pub path: PathBuf,
+    pub media_type: MediaType,
+    pub duration: Option<f64>,
+    pub size: u64,
+}
+
+impl MediaProbe {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            media_type: MediaType::Other("unknown".to_owned()),
+            duration: None,
+            size: 0,
+        }
+    }
+}
+
+/// A media segment (chunk of media data).
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct MediaSegment {
+    pub start: u64,
+    pub length: u64,
+    pub data: Vec<u8>,
+}
+
+/// A manifest of media assets.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+pub struct MediaManifest {
+    pub assets: Vec<String>,
+}
+
+/// Media pipeline (orchestrates processing).
+#[derive(Clone, Debug, Default)]
+pub struct MediaPipeline {
+    pub steps: Vec<PipelineStep>,
+}
+
+/// A media analysis result.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct MediaAnalysis {
+    pub probe: MediaProbe,
+    pub segments: Vec<MediaSegment>,
+}
+
+/// A media-specific MCP (Model Context Protocol) request.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct McpMediaRequest {
+    pub action: String,
+    pub path: PathBuf,
+    pub params: HashMap<String, String>,
+}
 
 /// Status of an automated job.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum JobStatus {
     Pending,
     Running,
@@ -41,7 +150,15 @@ pub struct Job {
 
 impl Job {
     pub fn new(id: u32, name: impl Into<String>, input: PathBuf, output: PathBuf) -> Self {
-        Self { id, name: name.into(), input, output, status: JobStatus::Pending, parameters: HashMap::new(), result: None }
+        Self {
+            id,
+            name: name.into(),
+            input,
+            output,
+            status: JobStatus::Pending,
+            parameters: HashMap::new(),
+            result: None,
+        }
     }
 
     pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
@@ -51,7 +168,7 @@ impl Job {
 }
 
 /// Result of a completed job.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct JobResult {
     pub output_path: PathBuf,
     pub duration: f64,
@@ -69,7 +186,11 @@ pub struct WorkflowDefinition {
 
 impl WorkflowDefinition {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), description: None, steps: Vec::new() }
+        Self {
+            name: name.into(),
+            description: None,
+            steps: Vec::new(),
+        }
     }
 
     pub fn with_description(mut self, desc: impl Into<String>) -> Self {
@@ -128,8 +249,22 @@ pub struct WorkflowStep {
 }
 
 impl WorkflowStep {
-    pub fn new(id: u32, name: impl Into<String>, command: impl Into<String>, output: PathBuf) -> Self {
-        Self { id, name: name.into(), command: command.into(), arguments: Vec::new(), input: None, output, dependencies: Vec::new(), condition: None }
+    pub fn new(
+        id: u32,
+        name: impl Into<String>,
+        command: impl Into<String>,
+        output: PathBuf,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            command: command.into(),
+            arguments: Vec::new(),
+            input: None,
+            output,
+            dependencies: Vec::new(),
+            condition: None,
+        }
     }
 
     pub fn with_input(mut self, input: impl Into<PathBuf>) -> Self {
@@ -191,9 +326,13 @@ pub struct AutomationApiImpl {
 }
 
 impl AutomationApiImpl {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-    pub fn jobs(&self) -> &HashMap<u32, Job> { &self.jobs }
+    pub fn jobs(&self) -> &HashMap<u32, Job> {
+        &self.jobs
+    }
 }
 
 impl AutomationApi for AutomationApiImpl {
@@ -230,11 +369,18 @@ impl AutomationApi for AutomationApiImpl {
     }
 
     fn run_workflow(&mut self, workflow: WorkflowDefinition) -> Result<Vec<Job>, AutomationError> {
-        let ordered = workflow.ordered_steps().ok_or_else(|| AutomationError::WorkflowError("cycle in workflow dependencies".to_owned()))?;
+        let ordered = workflow.ordered_steps().ok_or_else(|| {
+            AutomationError::WorkflowError("cycle in workflow dependencies".to_owned())
+        })?;
         let mut results = Vec::with_capacity(ordered.len());
 
         for step in ordered {
-            let job = Job::new(step.id, step.name.clone(), step.input.clone().unwrap_or_default(), step.output.clone());
+            let job = Job::new(
+                step.id,
+                step.name.clone(),
+                step.input.clone().unwrap_or_default(),
+                step.output.clone(),
+            );
             match self.execute(job) {
                 Ok(result) => results.push(result),
                 Err(e) => return Err(AutomationError::WorkflowError(e.to_string())),
@@ -253,11 +399,19 @@ pub struct MediaProcessor {
 }
 
 impl Default for MediaProcessor {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MediaProcessor {
-    pub fn new() -> Self { Self { steps: Vec::new(), workflows: Vec::new(), jobs: HashMap::new() } }
+    pub fn new() -> Self {
+        Self {
+            steps: Vec::new(),
+            workflows: Vec::new(),
+            jobs: HashMap::new(),
+        }
+    }
 
     pub fn add_step(mut self, step: PipelineStep) -> Self {
         self.steps.push(step);
@@ -296,12 +450,22 @@ impl MediaProcessor {
     }
 
     /// Run a workflow (execute all steps in order).
-    pub fn run_workflow(&mut self, workflow: WorkflowDefinition) -> Result<Vec<Job>, AutomationError> {
-        let ordered = workflow.ordered_steps().ok_or_else(|| AutomationError::WorkflowError("cycle".to_owned()))?;
+    pub fn run_workflow(
+        &mut self,
+        workflow: WorkflowDefinition,
+    ) -> Result<Vec<Job>, AutomationError> {
+        let ordered = workflow
+            .ordered_steps()
+            .ok_or_else(|| AutomationError::WorkflowError("cycle".to_owned()))?;
         let mut results = Vec::with_capacity(ordered.len());
 
         for step in ordered {
-            let job = Job::new(step.id, step.name.clone(), step.input.clone().unwrap_or_default(), step.output.clone());
+            let job = Job::new(
+                step.id,
+                step.name.clone(),
+                step.input.clone().unwrap_or_default(),
+                step.output.clone(),
+            );
             match self.execute(job) {
                 Ok(result) => results.push(result),
                 Err(e) => return Err(AutomationError::WorkflowError(e.to_string())),
@@ -311,14 +475,25 @@ impl MediaProcessor {
         Ok(results)
     }
 
-    pub fn list_jobs(&self) -> &HashMap<u32, Job> { &self.jobs }
+    pub fn list_jobs(&self) -> &HashMap<u32, Job> {
+        &self.jobs
+    }
 
-    pub fn get_job(&self, job_id: u32) -> Option<&Job> { self.jobs.get(&job_id) }
+    pub fn get_job(&self, job_id: u32) -> Option<&Job> {
+        self.jobs.get(&job_id)
+    }
 }
 
 impl std::fmt::Display for Job {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {} ({}: {})", self.id, self.name, self.status, self.input.display())
+        write!(
+            f,
+            "{}: {} ({}: {})",
+            self.id,
+            self.name,
+            self.status,
+            self.input.display()
+        )
     }
 }
 
@@ -334,7 +509,12 @@ mod tests {
 
     #[test]
     fn job_serializes() {
-        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        let job = Job::new(
+            1,
+            "test",
+            PathBuf::from("/in.mp4"),
+            PathBuf::from("/out.mkv"),
+        );
         let json = serde_json::to_string(&job).unwrap();
         assert!(json.contains("\"id\":1"));
         assert!(json.contains("\"status\":\"pending\""));
@@ -342,7 +522,12 @@ mod tests {
 
     #[test]
     fn job_result_serializes() {
-        let result = JobResult { output_path: PathBuf::from("/out.mkv"), duration: 1.5, files_produced: vec![PathBuf::from("/out.mkv")], metadata: HashMap::new() };
+        let result = JobResult {
+            output_path: PathBuf::from("/out.mkv"),
+            duration: 1.5,
+            files_produced: vec![PathBuf::from("/out.mkv")],
+            metadata: HashMap::new(),
+        };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"output_path\":\"/out.mkv\""));
     }
@@ -350,7 +535,12 @@ mod tests {
     #[test]
     fn automation_impl_schedules_jobs() {
         let mut api = AutomationApiImpl::new();
-        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        let job = Job::new(
+            1,
+            "test",
+            PathBuf::from("/in.mp4"),
+            PathBuf::from("/out.mkv"),
+        );
         api.schedule(job).unwrap();
         assert!(api.jobs().contains_key(&1));
         assert_eq!(api.jobs().get(&1).unwrap().status, JobStatus::Pending);
@@ -359,7 +549,12 @@ mod tests {
     #[test]
     fn automation_impl_executes_jobs() {
         let mut api = AutomationApiImpl::new();
-        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        let job = Job::new(
+            1,
+            "test",
+            PathBuf::from("/in.mp4"),
+            PathBuf::from("/out.mkv"),
+        );
         let result = api.execute(job).unwrap();
         assert_eq!(result.status, JobStatus::Completed);
         assert!(result.result.is_some());
@@ -368,7 +563,12 @@ mod tests {
     #[test]
     fn automation_impl_monitoring() {
         let mut api = AutomationApiImpl::new();
-        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        let job = Job::new(
+            1,
+            "test",
+            PathBuf::from("/in.mp4"),
+            PathBuf::from("/out.mkv"),
+        );
         api.execute(job).unwrap();
         let monitored = api.monitor(1).unwrap();
         assert_eq!(monitored.status, JobStatus::Completed);
@@ -377,9 +577,19 @@ mod tests {
     #[test]
     fn workflow_definition_orders_steps() {
         let workflow = WorkflowDefinition::new("test")
-            .with_step(WorkflowStep::new(0, "probe", "probe", PathBuf::from("/probe.json")))
-            .with_step(WorkflowStep::new(1, "transcode", "transcode", PathBuf::from("/out.mkv")).with_depends_on(0))
-            .with_step(WorkflowStep::new(2, "mux", "mux", PathBuf::from("/final.mkv")).with_depends_on(1));
+            .with_step(WorkflowStep::new(
+                0,
+                "probe",
+                "probe",
+                PathBuf::from("/probe.json"),
+            ))
+            .with_step(
+                WorkflowStep::new(1, "transcode", "transcode", PathBuf::from("/out.mkv"))
+                    .with_depends_on(0),
+            )
+            .with_step(
+                WorkflowStep::new(2, "mux", "mux", PathBuf::from("/final.mkv")).with_depends_on(1),
+            );
 
         let ordered = workflow.ordered_steps().unwrap();
         assert_eq!(ordered.len(), 3);
@@ -401,8 +611,16 @@ mod tests {
     fn automation_impl_runs_workflow() {
         let mut api = AutomationApiImpl::new();
         let workflow = WorkflowDefinition::new("test")
-            .with_step(WorkflowStep::new(0, "probe", "probe", PathBuf::from("/probe.json")))
-            .with_step(WorkflowStep::new(1, "transcode", "transcode", PathBuf::from("/out.mkv")).with_depends_on(0));
+            .with_step(WorkflowStep::new(
+                0,
+                "probe",
+                "probe",
+                PathBuf::from("/probe.json"),
+            ))
+            .with_step(
+                WorkflowStep::new(1, "transcode", "transcode", PathBuf::from("/out.mkv"))
+                    .with_depends_on(0),
+            );
 
         let results = api.run_workflow(workflow).unwrap();
         assert_eq!(results.len(), 2);
@@ -413,14 +631,24 @@ mod tests {
     #[test]
     fn media_processor_schedules_and_executes() {
         let processor = MediaProcessor::new();
-        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        let job = Job::new(
+            1,
+            "test",
+            PathBuf::from("/in.mp4"),
+            PathBuf::from("/out.mkv"),
+        );
         let processor = &mut (processor as AutomationApiImpl);
 
         processor.schedule(job).unwrap();
         assert!(processor.jobs().contains_key(&1));
         assert_eq!(processor.jobs().get(&1).unwrap().status, JobStatus::Pending);
 
-        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        let job = Job::new(
+            1,
+            "test",
+            PathBuf::from("/in.mp4"),
+            PathBuf::from("/out.mkv"),
+        );
         let result = processor.execute(job).unwrap();
         assert_eq!(result.status, JobStatus::Completed);
     }
@@ -429,8 +657,16 @@ mod tests {
     fn media_processor_runs_workflow() {
         let processor = MediaProcessor::new();
         let workflow = WorkflowDefinition::new("test")
-            .with_step(WorkflowStep::new(0, "probe", "probe", PathBuf::from("/probe.json")))
-            .with_step(WorkflowStep::new(1, "transcode", "transcode", PathBuf::from("/out.mkv")).with_depends_on(0));
+            .with_step(WorkflowStep::new(
+                0,
+                "probe",
+                "probe",
+                PathBuf::from("/probe.json"),
+            ))
+            .with_step(
+                WorkflowStep::new(1, "transcode", "transcode", PathBuf::from("/out.mkv"))
+                    .with_depends_on(0),
+            );
 
         let processor = &mut (processor as AutomationApiImpl);
         let results = processor.run_workflow(workflow).unwrap();
