@@ -11,3 +11,4 @@ nexum-task = { path = "../task" }
 nexum-scheduler = { path = "../scheduler" }
 nexum-storage = { path = "../storage" }
 nexum-resolver = { path = "../resolver" }
+nexum-engine = { path = "../engine" }
