@@ -162,6 +162,15 @@ impl TaskService {
         Ok(self.tasks.get(&id).expect("task was inserted"))
     }
 
+    /// Restores a previously persisted task without emitting a Created event.
+    pub fn restore(&mut self, task: DownloadTask) -> Result<(), TaskServiceError> {
+        if self.tasks.contains_key(&task.id) {
+            return Err(TaskServiceError::AlreadyExists(task.id));
+        }
+        self.tasks.insert(task.id.clone(), task);
+        Ok(())
+    }
+
     pub fn get(&self, id: &TaskId) -> Option<&DownloadTask> {
         self.tasks.get(id)
     }
