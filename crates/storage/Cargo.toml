@@ -8,3 +8,4 @@ description = "Nexum storage component"
 [dependencies]
 nexum-domain = { path = "../domain" }
 nexum-task = { path = "../task" }
+rqslite = { package = "rusqlite", version = "0.37", features = ["bundled"] }
