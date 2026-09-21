@@ -311,10 +311,12 @@ mod tests {
     #[test]
     fn resume_waits_when_no_slot_is_available() {
         let (mut service, ids) = service_with_tasks(2);
-        let mut scheduler = Scheduler::new(SchedulerConfig::default()).unwrap();
+        let mut scheduler = Scheduler::new(SchedulerConfig {
+            max_concurrent_tasks: 1,
+            ..SchedulerConfig::default()
+        }).unwrap();
         scheduler.enqueue(&mut service, &ids[0], Priority::NORMAL).unwrap();
         scheduler.enqueue(&mut service, &ids[1], Priority::NORMAL).unwrap();
-        scheduler.start_next(&mut service).unwrap();
         scheduler.start_next(&mut service).unwrap();
         scheduler.pause(&mut service, &ids[0]).unwrap();
         scheduler.start_next(&mut service).unwrap();
