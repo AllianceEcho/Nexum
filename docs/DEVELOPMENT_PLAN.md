@@ -37,29 +37,29 @@ Goal: define what a download task is and how it behaves.
 - [x] Destination model
 - [x] Basic task metadata
 - [x] Progress model
-- [ ] Error model
+- [x] Error model
 
 #### 1B — Task State Machine
 
-- [ ] Created
-- [ ] Queued
-- [ ] Downloading
-- [ ] Paused
-- [ ] Completed
-- [ ] Failed
-- [ ] Retry
-- [ ] Explicit transition validation
-- [ ] Unit tests for valid and invalid transitions
+- [x] Created
+- [x] Queued
+- [x] Downloading
+- [x] Paused
+- [x] Completed
+- [x] Failed
+- [x] Retry
+- [x] Explicit transition validation
+- [x] Unit tests for valid and invalid transitions
 
 #### 1C — Task Service
 
-- [ ] Create task
-- [ ] Queue task
-- [ ] Pause/resume task
-- [ ] Complete/fail task
-- [ ] Retry task
-- [ ] Remove task
-- [ ] Task events
+- [x] Create task
+- [x] Queue task
+- [x] Pause/resume task
+- [x] Complete/fail task
+- [x] Retry task
+- [x] Remove task
+- [x] Task events
 
 **Definition of done:** task behavior is deterministic and fully unit-tested without a real download engine.
 
@@ -209,4 +209,4 @@ Protocol, storage schema, and plugin APIs require explicit versioning strategies
 
 ## 6. Immediate Work
 
-**Phase 2 — Scheduler is complete.** Phase 3 — Storage is implemented through the repository boundary, SQLite, schema versioning, migrations, task persistence, and initial restart recovery. Next: harden resolver validation and integrate resolved sources into task creation.
+**Phase 2 — Scheduler is complete.** Phase 3 — Storage is implemented through the repository boundary, SQLite, schema versioning, migrations, task persistence, and initial restart recovery. Phase 4 — Resolver now provides source-specific validation and is integrated into Core task creation. Next: begin Phase 5 — Engine Adapter.
