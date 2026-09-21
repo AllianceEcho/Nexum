@@ -1,0 +1,11 @@
+[package]
+name = "nexum-server"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Nexum local JSON-RPC server"
+
+[dependencies]
+nexum-core = { path = "../../crates/core" }
+nexum-protocol = { path = "../../crates/protocol" }
+serde_json = "1"
