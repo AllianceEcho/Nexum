@@ -180,10 +180,53 @@ pub fn task_event_to_envelope(event: &nexum_task::TaskEvent) -> EventEnvelope {
     }
 }
 
+
+pub fn scheduler_event_to_envelope(event: &nexum_core::nexum_scheduler::SchedulerEvent) -> EventEnvelope {
+    use nexum_core::nexum_scheduler::SchedulerEvent;
+    match event {
+        SchedulerEvent::Enqueued { task_id, priority } =>
+            EventEnvelope::new("scheduler.enqueued", serde_json::json!({"task_id": task_id.to_string(), "priority": priority.value()})),
+        SchedulerEvent::Started { task_id } =>
+            EventEnvelope::new("scheduler.started", serde_json::json!({"task_id": task_id.to_string()})),
+        SchedulerEvent::Paused { task_id } =>
+            EventEnvelope::new("scheduler.paused", serde_json::json!({"task_id": task_id.to_string()})),
+        SchedulerEvent::Resumed { task_id } =>
+            EventEnvelope::new("scheduler.resumed", serde_json::json!({"task_id": task_id.to_string()})),
+        SchedulerEvent::Completed { task_id } =>
+            EventEnvelope::new("scheduler.completed", serde_json::json!({"task_id": task_id.to_string()})),
+        SchedulerEvent::Failed { task_id } =>
+            EventEnvelope::new("scheduler.failed", serde_json::json!({"task_id": task_id.to_string()})),
+        SchedulerEvent::Retrying { task_id, attempt } =>
+            EventEnvelope::new("scheduler.retrying", serde_json::json!({"task_id": task_id.to_string(), "attempt": attempt})),
+    }
+}
+
+#[derive(Default)]
+pub struct EventBuffer {
+    events: Vec<EventEnvelope>,
+}
+impl EventBuffer {
+    pub fn new() -> Self { Self::default() }
+
+    pub fn collect_core<R: nexum_core::nexum_storage::TaskRepository>(&mut self, core: &mut Core<R>) {
+        self.events.extend(core.drain_task_events().into_iter().map(|e| task_event_to_envelope(&e)));
+        self.events.extend(core.drain_scheduler_events().into_iter().map(|e| scheduler_event_to_envelope(&e)));
+    }
+
+    pub fn push(&mut self, event: EventEnvelope) { self.events.push(event); }
+
+    pub fn drain(&mut self) -> Vec<EventEnvelope> { std::mem::take(&mut self.events) }
+
+    pub fn len(&self) -> usize { self.events.len() }
+
+    pub fn is_empty(&self) -> bool { self.events.is_empty() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use nexum_core::Core;
+    use nexum_domain::{Destination, DownloadSource};
     use serde_json::json;
 
     #[test]
@@ -217,6 +260,24 @@ mod tests {
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert_eq!(response.error.unwrap().code, -32601);
     }
+    #[test]
+    fn scheduler_event_maps_to_stable_envelope() {
+        let event = nexum_core::nexum_scheduler::SchedulerEvent::Retrying { task_id: TaskId::from("t1"), attempt: 2 };
+        let envelope = scheduler_event_to_envelope(&event);
+        assert_eq!(envelope.event, "scheduler.retrying");
+        assert_eq!(envelope.data["attempt"], 2);
+    }
+
+    #[test]
+    fn event_buffer_collects_core_events() {
+        let mut core = Core::default();
+        core.create_task(TaskId::from("t1"), DownloadSource::new("https://example.com/file"), Destination::new("/tmp/file")).unwrap();
+        let mut buffer = EventBuffer::new();
+        buffer.collect_core(&mut core);
+        assert_eq!(buffer.len(), 1);
+        assert_eq!(buffer.drain()[0].event, "task.created");
+    }
+
     #[test]
     fn task_event_maps_to_stable_envelope() {
         let event = nexum_task::TaskEvent::Created { task_id: TaskId::from("t1") };
