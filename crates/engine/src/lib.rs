@@ -163,6 +163,85 @@ impl EngineAdapter for InMemoryEngine {
     }
 }
 
+pub struct HttpEngine {
+    client: reqwest::blocking::Client,
+    tasks: std::collections::HashMap<String, (TaskId, EngineTaskState, Progress, String)>,
+    next_handle: u64,
+}
+
+impl Default for HttpEngine {
+    fn default() -> Self {
+        Self {
+            client: reqwest::blocking::Client::new(),
+            tasks: std::collections::HashMap::new(),
+            next_handle: 0,
+        }
+    }
+}
+
+impl HttpEngine {
+    pub fn new() -> Self { Self::default() }
+
+    fn entry(&self, task: &EngineTask) -> Result<&(TaskId, EngineTaskState, Progress, String), EngineError> {
+        self.tasks.get(&task.handle).ok_or_else(|| EngineError::TaskNotFound(task.task_id.clone()))
+    }
+
+    fn entry_mut(&mut self, task: &EngineTask) -> Result<&mut (TaskId, EngineTaskState, Progress, String), EngineError> {
+        self.tasks.get_mut(&task.handle).ok_or_else(|| EngineError::TaskNotFound(task.task_id.clone()))
+    }
+}
+
+impl EngineAdapter for HttpEngine {
+    fn name(&self) -> &str { "http" }
+
+    fn capabilities(&self) -> EngineCapabilities {
+        EngineCapabilities { supports_pause: true, supports_resume: true, supports_remove: true, supports_progress: true }
+    }
+
+    fn start(&mut self, task_id: &TaskId, source: &str, destination: &str) -> Result<EngineTask, EngineError> {
+        let response = self.client.head(source).send()
+            .map_err(|error| EngineError::Failed(error.to_string()))?;
+        if !response.status().is_success() {
+            return Err(EngineError::Failed(format!("HTTP HEAD returned {}", response.status())));
+        }
+        self.next_handle += 1;
+        let handle = format!("http-{}", self.next_handle);
+        let total = response.content_length();
+        self.tasks.insert(
+            handle.clone(),
+            (task_id.clone(), EngineTaskState::Downloading, Progress::new(0, total), destination.to_owned()),
+        );
+        Ok(EngineTask { task_id: task_id.clone(), handle })
+    }
+
+    fn pause(&mut self, task: &EngineTask) -> Result<(), EngineError> {
+        let entry = self.entry_mut(task)?;
+        entry.1 = EngineTaskState::Paused;
+        Ok(())
+    }
+
+    fn resume(&mut self, task: &EngineTask) -> Result<(), EngineError> {
+        let entry = self.entry_mut(task)?;
+        if entry.1 != EngineTaskState::Paused {
+            return Err(EngineError::Failed("task is not paused".into()));
+        }
+        entry.1 = EngineTaskState::Downloading;
+        Ok(())
+    }
+
+    fn remove(&mut self, task: &EngineTask) -> Result<(), EngineError> {
+        self.tasks.remove(&task.handle).map(|_| ()).ok_or_else(|| EngineError::TaskNotFound(task.task_id.clone()))
+    }
+
+    fn progress(&self, task: &EngineTask) -> Result<Progress, EngineError> {
+        Ok(self.entry(task)?.2.clone())
+    }
+
+    fn state(&self, task: &EngineTask) -> Result<EngineTaskState, EngineError> {
+        Ok(self.entry(task)?.1)
+    }
+}
+
 pub struct EngineRegistry {
     engines: Vec<Box<dyn EngineAdapter>>,
 }
