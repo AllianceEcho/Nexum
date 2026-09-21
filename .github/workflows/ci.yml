@@ -1,5 +1,6 @@
 name: CI
 # Full workspace validation: format, check, test, and clippy.
+# Validation run is intentionally strict so failures are fixed before feature work continues.
 
 on:
   push:
