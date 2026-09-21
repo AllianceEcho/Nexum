@@ -1,4 +1,5 @@
 name: CI
+# Full workspace validation: format, check, test, and clippy.
 
 on:
   push:
