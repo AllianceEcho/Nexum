@@ -5,12 +5,15 @@ pub use nexum_scheduler;
 pub use nexum_storage;
 pub use nexum_task;
 pub use nexum_resolver;
+pub use nexum_engine;
 
 use nexum_domain::{Destination, DownloadSource, TaskId};
 use nexum_scheduler::{Priority, Scheduler, SchedulerConfig, SchedulerError, SchedulerEvent};
 use nexum_storage::{InMemoryRepository, StorageError, StoredTask, TaskRepository};
 use nexum_resolver::{ResolveRequest, ResolveResult, ResolverError, ResolverRegistry};
 use nexum_task::{DownloadTask, TaskService, TaskServiceError, TaskState};
+use nexum_engine::{EngineError, EngineRegistry, EngineTask};
+use std::collections::HashMap;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum CoreError {
@@ -18,6 +21,7 @@ pub enum CoreError {
     Task(TaskServiceError),
     Storage(StorageError),
     Resolver(ResolverError),
+    Engine(EngineError),
 }
 
 impl From<SchedulerError> for CoreError {
@@ -32,6 +36,9 @@ impl From<StorageError> for CoreError {
 impl From<ResolverError> for CoreError {
     fn from(value: ResolverError) -> Self { Self::Resolver(value) }
 }
+impl From<EngineError> for CoreError {
+    fn from(value: EngineError) -> Self { Self::Engine(value) }
+}
 
 /// Core orchestration with an injectable task repository.
 pub struct Core<R: TaskRepository = InMemoryRepository> {
@@ -39,6 +46,8 @@ pub struct Core<R: TaskRepository = InMemoryRepository> {
     pub scheduler: Scheduler,
     pub repository: R,
     pub resolver: ResolverRegistry,
+    pub engines: EngineRegistry,
+    pub engine_tasks: HashMap<TaskId, EngineTask>,
 }
 
 impl Core<InMemoryRepository> {
@@ -57,6 +66,12 @@ impl<R: TaskRepository> Core<R> {
             scheduler: Scheduler::new(scheduler_config)?,
             repository,
             resolver: ResolverRegistry::new(),
+            engines: {
+                let mut registry = EngineRegistry::new();
+                registry.register(Box::new(nexum_engine::InMemoryEngine::new()));
+                registry
+            },
+            engine_tasks: HashMap::new(),
         })
     }
 
@@ -87,11 +102,43 @@ impl<R: TaskRepository> Core<R> {
     }
 
     pub fn start_next(&mut self) -> Result<Option<TaskId>, CoreError> {
+        self.start_next_with_engine("in-memory")
+    }
+
+    pub fn start_next_with_engine(&mut self, engine_name: &str) -> Result<Option<TaskId>, CoreError> {
         let id = self.scheduler.start_next(&mut self.tasks)?;
-        if let Some(task_id) = &id {
-            self.persist_task(task_id)?;
+        let Some(task_id) = id else { return Ok(None); };
+        let task = self.tasks.get(&task_id).cloned().ok_or_else(|| TaskServiceError::NotFound(task_id.clone()))?;
+        let result = match self.engines.get_mut(engine_name) {
+            Some(engine) => engine.start(&task.id, task.source.as_str(), task.destination.as_str()),
+            None => Err(EngineError::Failed(format!("engine not found: {engine_name}"))),
+        };
+        match result {
+            Ok(engine_task) => {
+                self.engine_tasks.insert(task_id.clone(), engine_task);
+                self.persist_task(&task_id)?;
+                Ok(Some(task_id))
+            }
+            Err(error) => {
+                self.scheduler.mark_finished(&mut self.tasks, &task_id, TaskState::Failed)?;
+                self.persist_task(&task_id)?;
+                Err(CoreError::Engine(error))
+            }
         }
-        Ok(id)
+    }
+
+    pub fn sync_engine_task(&mut self, id: &TaskId, engine_name: &str) -> Result<(), CoreError> {
+        let engine_task = self.engine_tasks.get(id).ok_or_else(|| EngineError::TaskNotFound(id.clone()))?.clone();
+        let snapshot = match self.engines.get(engine_name) {
+            Some(engine) => nexum_engine::EngineSnapshot::new(engine.state(&engine_task)?, engine.progress(&engine_task)?),
+            None => return Err(EngineError::Failed(format!("engine not found: {engine_name}")).into()),
+        };
+        let (state, progress) = nexum_engine::map_engine_snapshot(&snapshot);
+        self.tasks.update_progress(id, progress)?;
+        if self.tasks.get(id).map(|task| task.state) != Some(state) {
+            self.tasks.transition(id, state)?;
+        }
+        self.persist_task(id)
     }
 
     pub fn pause_task(&mut self, id: &TaskId) -> Result<(), CoreError> {
