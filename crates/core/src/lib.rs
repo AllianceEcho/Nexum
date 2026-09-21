@@ -11,7 +11,7 @@ pub use nexum_task;
 use nexum_domain::{Destination, DownloadSource, TaskId};
 use nexum_engine::{EngineError, EngineRegistry, EngineTask};
 use nexum_resolver::{ResolveRequest, ResolveResult, ResolverError, ResolverRegistry};
-use nexum_scheduler::{Priority, Scheduler, SchedulerConfig, SchedulerError, SchedulerEvent};
+use nexum_scheduler::{Priority, Scheduler, SchedulerError, SchedulerEvent};
 use nexum_storage::{InMemoryRepository, StorageError, StoredTask, TaskRepository};
 use nexum_task::{DownloadTask, TaskService, TaskServiceError, TaskState};
 use std::collections::HashMap;
