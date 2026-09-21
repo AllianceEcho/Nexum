@@ -367,7 +367,10 @@ mod tests {
             max_concurrent_tasks: 0,
             ..SchedulerConfig::default()
         });
-        assert!(matches!(result, Err(SchedulerError::InvalidConcurrencyLimit)));
+        assert!(matches!(
+            result,
+            Err(SchedulerError::InvalidConcurrencyLimit)
+        ));
     }
 
     #[test]
