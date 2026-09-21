@@ -1,0 +1,12 @@
+[package]
+name = "nexum-desktop"
+version = "0.1.0"
+description = "Nexum desktop application"
+edition = "2024"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
