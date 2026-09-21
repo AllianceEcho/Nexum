@@ -1,4 +1,4 @@
-use nexum_protocol::{Credential, RpcRequest, parse_request, serialize_response};
+use nexum_protocol::{Credential, RpcRequest};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
@@ -49,15 +49,13 @@ impl Config {
         if !file.is_file() {
             return None;
         }
-        std::fs::read_to_string(&file)
-            .ok()
-            .and_then(|content| {
-                content
-                    .lines()
-                    .find(|l| l.trim().starts_with(&format!("{key}=")))
-            })
-            .and_then(|line| line.trim().split_once('='))
-            .and_then(|(_, value)| Some(value.trim().to_owned()))
+        std::fs::read_to_string(&file).ok().and_then(|content| {
+            content
+                .lines()
+                .find(|l| l.trim().starts_with(&format!("{key}=")))
+                .and_then(|line| line.trim().split_once('='))
+                .map(|(_, value)| value.trim().to_owned())
+        })
     }
 
     fn write_config_value(&self, key: &str, value: &str) -> Result<(), String> {
@@ -117,7 +115,10 @@ impl JsonRpcClient {
         params: Option<Value>,
         credential: Option<Credential>,
     ) -> Result<Value, String> {
-        let request = RpcRequest::new(id, method, params).with_credential(credential);
+        let request = match credential {
+            Some(credential) => RpcRequest::new(id, method, params).with_credential(credential),
+            None => RpcRequest::new(id, method, params),
+        };
         let payload = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         self.stream
             .write_all(payload.as_bytes())
@@ -235,19 +236,8 @@ fn main() {
         }
         ("server", "version") if args.len() == 2 => ("server.version", None),
         ("server", "auth") if args.len() == 2 => ("server.auth", None),
-        ("server", "ping") => {
-            // Ping queries both server.version and server.auth
+        ("server", "ping") if args.len() == 2 => {
             verify_version = false;
-            match get_server_address() {
-                Ok(addr) => {
-                    println!("{addr}");
-                    return;
-                }
-                Err(e) => {
-                    eprintln!("{e}");
-                    std::process::exit(1);
-                }
-            }
             ("server.version", None)
         }
         ("config", "set-server") if args.len() == 3 => {
@@ -304,8 +294,8 @@ fn main() {
 
     // Verify server version on first connection (unless explicitly skipping)
     if verify_version {
-        if let Ok(response) = client.call_with_credential(0, "server.version", None, None) {
-            if let Some(Ok(server_ver)) = response.as_str().map(|v| Ok::<_, String>(v.to_owned())) {
+        if let Ok(response) = client.call_with_credential(0, "server.version", None, credential.clone()) {
+            if let Some(server_ver) = response.as_str() {
                 let local_ver = nexum_protocol::RpcDispatcher::version();
                 if server_ver != local_ver {
                     eprintln!(
