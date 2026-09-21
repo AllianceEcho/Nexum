@@ -54,6 +54,70 @@ pub trait EngineAdapter {
     fn resume(&mut self, task: &EngineTask) -> Result<(), EngineError>;
     fn remove(&mut self, task: &EngineTask) -> Result<(), EngineError>;
     fn progress(&self, task: &EngineTask) -> Result<Progress, EngineError>;
+    fn state(&self, task: &EngineTask) -> Result<EngineTaskState, EngineError>;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EngineTaskState {
+    Queued,
+    Downloading,
+    Paused,
+    Completed,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EngineSnapshot {
+    pub state: EngineTaskState,
+    pub progress: Progress,
+}
+
+impl EngineSnapshot {
+    pub fn new(state: EngineTaskState, progress: Progress) -> Self {
+        Self { state, progress }
+    }
+
+    pub fn to_task_state(&self) -> TaskState {
+        match self.state {
+            EngineTaskState::Queued => TaskState::Queued,
+            EngineTaskState::Downloading => TaskState::Downloading,
+            EngineTaskState::Paused => TaskState::Paused,
+            EngineTaskState::Completed => TaskState::Completed,
+            EngineTaskState::Failed => TaskState::Failed,
+        }
+    }
+}
+
+pub fn map_engine_snapshot(snapshot: &EngineSnapshot) -> (TaskState, Progress) {
+    (snapshot.to_task_state(), snapshot.progress.clone())
+}
+
+pub struct EngineRegistry {
+    engines: Vec<Box<dyn EngineAdapter>>,
+}
+
+impl Default for EngineRegistry {
+    fn default() -> Self { Self::new() }
+}
+
+impl EngineRegistry {
+    pub fn new() -> Self { Self { engines: Vec::new() } }
+
+    pub fn register(&mut self, engine: Box<dyn EngineAdapter>) {
+        self.engines.push(engine);
+    }
+
+    pub fn get(&self, name: &str) -> Option<&dyn EngineAdapter> {
+        self.engines.iter().find(|engine| engine.name() == name).map(|engine| engine.as_ref())
+    }
+
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut dyn EngineAdapter> {
+        self.engines.iter_mut().find(|engine| engine.name() == name).map(|engine| engine.as_mut())
+    }
+
+    pub fn names(&self) -> Vec<&str> {
+        self.engines.iter().map(|engine| engine.name()).collect()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -102,6 +166,9 @@ mod tests {
         fn progress(&self, _task: &EngineTask) -> Result<Progress, EngineError> {
             Ok(Progress::new(42, Some(100)))
         }
+        fn state(&self, _task: &EngineTask) -> Result<EngineTaskState, EngineError> {
+            Ok(EngineTaskState::Downloading)
+        }
     }
 
     #[test]
@@ -116,6 +183,27 @@ mod tests {
         assert_eq!(mapping.task_id, id);
         assert_eq!(mapping.state, TaskState::Downloading);
         assert_eq!(engine.progress(&task).unwrap(), Progress::new(42, Some(100)));
+        assert_eq!(engine.state(&task).unwrap(), EngineTaskState::Downloading);
+        let snapshot = EngineSnapshot::new(engine.state(&task).unwrap(), engine.progress(&task).unwrap());
+        assert_eq!(map_engine_snapshot(&snapshot).0, TaskState::Downloading);
+    }
+
+    #[test]
+    fn registry_selects_engines_by_name() {
+        let mut registry = EngineRegistry::new();
+        registry.register(Box::new(FakeEngine));
+        assert_eq!(registry.names(), vec!["fake"]);
+        assert!(registry.get("fake").is_some());
+        assert!(registry.get("missing").is_none());
+        assert!(registry.get_mut("fake").is_some());
+    }
+
+    #[test]
+    fn engine_snapshot_maps_state_and_progress() {
+        let snapshot = EngineSnapshot::new(EngineTaskState::Completed, Progress::new(100, Some(100)));
+        let (state, progress) = map_engine_snapshot(&snapshot);
+        assert_eq!(state, TaskState::Completed);
+        assert_eq!(progress, Progress::new(100, Some(100)));
     }
 
     #[test]
