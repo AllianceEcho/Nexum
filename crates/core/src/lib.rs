@@ -4,10 +4,12 @@ pub use nexum_domain;
 pub use nexum_scheduler;
 pub use nexum_storage;
 pub use nexum_task;
+pub use nexum_resolver;
 
 use nexum_domain::{Destination, DownloadSource, TaskId};
 use nexum_scheduler::{Priority, Scheduler, SchedulerConfig, SchedulerError, SchedulerEvent};
 use nexum_storage::{InMemoryRepository, StorageError, StoredTask, TaskRepository};
+use nexum_resolver::{ResolveRequest, ResolveResult, ResolverError, ResolverRegistry};
 use nexum_task::{DownloadTask, TaskService, TaskServiceError, TaskState};
 
 #[derive(Debug, Eq, PartialEq)]
@@ -15,6 +17,7 @@ pub enum CoreError {
     Scheduler(SchedulerError),
     Task(TaskServiceError),
     Storage(StorageError),
+    Resolver(ResolverError),
 }
 
 impl From<SchedulerError> for CoreError {
@@ -26,12 +29,16 @@ impl From<TaskServiceError> for CoreError {
 impl From<StorageError> for CoreError {
     fn from(value: StorageError) -> Self { Self::Storage(value) }
 }
+impl From<ResolverError> for CoreError {
+    fn from(value: ResolverError) -> Self { Self::Resolver(value) }
+}
 
 /// Core orchestration with an injectable task repository.
 pub struct Core<R: TaskRepository = InMemoryRepository> {
     pub tasks: TaskService,
     pub scheduler: Scheduler,
     pub repository: R,
+    pub resolver: ResolverRegistry,
 }
 
 impl Core<InMemoryRepository> {
@@ -49,7 +56,13 @@ impl<R: TaskRepository> Core<R> {
             tasks: TaskService::new(),
             scheduler: Scheduler::new(scheduler_config)?,
             repository,
+            resolver: ResolverRegistry::new(),
         })
+    }
+
+    pub fn resolve_source(&self, source: impl Into<String>) -> Result<ResolveResult, CoreError> {
+        let request = ResolveRequest::new(source)?;
+        Ok(self.resolver.resolve(&request)?)
     }
 
     pub fn create_task(
@@ -179,9 +192,12 @@ mod tests {
     }
 
     #[test]
-    fn injected_repository_persists_task_state() {
-        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+    fn resolves_sources_through_core_boundary() {
+        let core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        let result = core.resolve_source("https://example.com/file").unwrap();
+        assert_eq!(result.kind, nexum_resolver::ResolveKind::Https);
         let (source, destination) = task_source();
+        let mut core = core;
         let id = TaskId::from("task-1");
         core.create_task(id.clone(), source, destination).unwrap();
         core.queue_task(&id, Priority::HIGH).unwrap();
