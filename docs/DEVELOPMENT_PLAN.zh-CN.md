@@ -68,10 +68,10 @@ Nexum 从核心向外开发。
 - [x] Queue 抽象
 - [x] 并发限制
 - [x] 优先级
-- [ ] Retry Policy
-- [ ] 暂停 / 恢复调度
+- [x] Retry Policy
+- [x] 暂停 / 恢复调度
 - [ ] 带宽策略抽象
-- [ ] Scheduler Events
+- [x] Scheduler Events
 
 ### Phase 3 — Storage
 
@@ -204,10 +204,4 @@ Protocol、Storage Schema 和 Plugin API 在正式公开前都必须建立明确
 
 ## 6. 当前立即执行
 
-现在正式进入 **Phase 1A + Phase 1B**：
-
-1. 实现 Domain Identifier 和下载基础模型。
-2. 实现 Task Model 与状态机。
-3. 为初始生命周期补充状态转换测试。
-4. 保持实现与具体下载引擎完全解耦。
-5. 这部分稳定后，再开始 Scheduler。
+当前继续推进 **Phase 2 — Scheduler**。Queue、并发限制、优先级、Retry Policy、暂停 / 恢复以及 Scheduler Events 已经实现。下一项是带宽策略抽象，完成后进入 Phase 3 — Storage。
