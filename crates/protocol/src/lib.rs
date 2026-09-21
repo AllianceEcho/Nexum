@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn notifications_have_no_response() {
         let request = RpcRequest::notification("task.list", None);
-        let mut core = Core::default();
+        let mut core = Core::new(SchedulerConfig::default()).unwrap();
         assert!(RpcDispatcher::dispatch(&mut core, &request).is_none());
     }
     #[test]
@@ -599,7 +599,7 @@ mod tests {
     }
     #[test]
     fn server_version_method_works() {
-        let mut core = Core::default();
+        let mut core = Core::new(SchedulerConfig::default()).unwrap();
         let request = RpcRequest::new(1, "server.version", None);
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert!(response.is_success());
@@ -607,7 +607,7 @@ mod tests {
     }
     #[test]
     fn server_auth_returns_supported_schemes() {
-        let mut core = Core::default();
+        let mut core = Core::new(SchedulerConfig::default()).unwrap();
         let request = RpcRequest::new(1, "server.auth", None);
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert!(response.is_success());
@@ -624,7 +624,7 @@ mod tests {
     #[test]
     fn unknown_method_is_reported() {
         let request = RpcRequest::new(1, "task.unknown", None);
-        let mut core = Core::default();
+        let mut core = Core::new(SchedulerConfig::default()).unwrap();
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert_eq!(response.error.unwrap().code, -32601);
     }
@@ -641,7 +641,7 @@ mod tests {
 
     #[test]
     fn event_buffer_collects_core_events() {
-        let mut core = Core::default();
+        let mut core = Core::new(SchedulerConfig::default()).unwrap();
         core.create_task(
             TaskId::from("t1"),
             DownloadSource::new("https://example.com/file"),
