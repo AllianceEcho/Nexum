@@ -1,45 +1,55 @@
 # Roadmap
 
-Nexum 的路线图会随着架构验证和社区反馈持续调整。
+Nexum 路线图用于记录已经落地的基础能力，以及后续稳定化、扩展和媒体自动化工作的方向。
 
 ## Phase 1 — Core
 
 - [x] Rust workspace
-- [x] Domain model
+- [x] Domain Model
 - [x] 下载任务状态机
-- [x] 调度器
+- [x] Scheduler
 - [x] 持久化存储
-- [x] 事件总线
-- [x] 引擎适配器接口
+- [x] Task Events
+- [x] Engine Adapter 接口
+- [x] Resolver 基础能力
 
 ## Phase 2 — Protocol
 
 - [x] Nexum Protocol
-- [x] 任务 CRUD
-- [x] 任务控制
-- [x] 进度事件
-- [x] 鉴权模型
+- [x] 任务 CRUD 与控制
+- [x] 进度与任务事件
+- [x] Protocol 版本协商
+- [x] 鉴权边界
+- [x] Compatibility Tests
 
 ## Phase 3 — Clients
 
-- [x] CLI 基础（JSON-RPC 客户端、配置管理、认证）
-- [x] 服务端基础（TCP、可配置、优雅关闭）
-- [x] 桌面端基础（Tauri 2.0 + React 19）
-- [ ] 浏览器集成
+- [x] Server 基础能力
+- [x] CLI 基础与 JSON-RPC Client
+- [x] CLI 任务管理
+- [x] Desktop 基础能力
+- [x] Browser 集成
 
 ## Phase 4 — Extensibility
 
-- [x] 插件清单（id、name、version、description、author、license）
-- [x] 权限模型（None、Read、Write、Network、Execute）
-- [x] 插件 SDK 骨架（Capability、PathPattern）
-- [ ] 解析器扩展
-- [ ] 引擎扩展
+- [x] Plugin Manifest
+- [x] Permission Model
+- [x] Capability API
+- [x] Plugin SDK 骨架
+- [ ] Plugin 生命周期
+- [ ] Resolver 扩展
+- [ ] Engine 扩展
 
 ## Phase 5 — Media & Automation
 
-- [ ] 媒体管道（MediaProbe、Track、MuxSpec）
-- [ ] 自动化 API
-- [ ] AI/MCP 集成
-- [ ] 远程设备管理
+- [x] 基础媒体数据结构
+- [ ] 媒体探测工作流
+- [ ] Manifest Parsing
+- [ ] Track Selection
+- [ ] Segment Scheduling
+- [ ] Mux / Post-processing
+- [ ] Automation API
+- [ ] AI / MCP Integration
+- [ ] Remote Device Management
 
 > Roadmap 项目仅为方向性说明，不代表固定发布计划的承诺。
