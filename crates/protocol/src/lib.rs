@@ -5,6 +5,7 @@ pub use nexum_security::{
 };
 
 use nexum_core::Core;
+use nexum_core::CoreError;
 use nexum_domain::{Destination, DownloadSource, TaskId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -529,6 +530,7 @@ impl EventBuffer {
 mod tests {
     use super::*;
     use nexum_core::Core;
+    use nexum_core::nexum_scheduler::SchedulerConfig;
     use nexum_domain::{Destination, DownloadSource};
     use serde_json::json;
 
