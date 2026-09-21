@@ -108,11 +108,11 @@ Goal: define what a download task is and how it behaves.
 
 ### Phase 6 — Nexum Protocol
 
-- [ ] Protocol envelope
-- [ ] Request/response model
-- [ ] Task APIs
-- [ ] Event stream
-- [ ] Error codes
+- [x] Protocol envelope
+- [x] Request/response model
+- [x] Task APIs
+- [x] Transport-neutral event stream
+- [x] Error codes
 - [ ] Versioning
 - [ ] Authentication boundary
 - [ ] Compatibility tests
@@ -209,4 +209,4 @@ Protocol, storage schema, and plugin APIs require explicit versioning strategies
 
 ## 6. Immediate Work
 
-**Phase 2 — Scheduler is complete.** Phase 3 — Storage is implemented through the repository boundary, SQLite, schema versioning, migrations, task persistence, and initial restart recovery. Phase 4 — Resolver now provides source-specific validation and is integrated into Core task creation. Phase 5 — Engine Adapter has started with the adapter boundary, capabilities, and task mapping. Next: strengthen HTTP engine integration tests and begin the Nexum Protocol boundary.
+**Phase 2 — Scheduler is complete.** Phase 3 — Storage is implemented through the repository boundary, SQLite, schema versioning, migrations, task persistence, and initial restart recovery. Phase 4 — Resolver now provides source-specific validation and is integrated into Core task creation. Phase 5 — Engine Adapter has the adapter boundary, capabilities, task mapping, lifecycle mapping, and an initial HTTP engine. Phase 6 — Protocol now has JSON-RPC request/response primitives, task APIs, application error codes, notification handling, and a transport-neutral event buffer. Next: define the concrete event transport and compatibility/versioning boundaries.
