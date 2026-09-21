@@ -312,4 +312,156 @@ mod tests {
         assert_eq!(stored.state, TaskState::Downloading);
         assert_eq!(stored.progress.downloaded_bytes, 64);
     }
+
+    #[test]
+    fn full_task_lifecycle() {
+        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        let (source, destination) = task_source();
+        let id = TaskId::from("lifecycle-task");
+
+        // Create
+        let task = core.create_task(id.clone(), source.clone(), destination.clone()).unwrap();
+        assert_eq!(task.state, TaskState::Created);
+
+        // Queue
+        core.queue_task(&id, Priority::NORMAL).unwrap();
+        assert_eq!(core.tasks.get(&id).unwrap().state, TaskState::Queued);
+
+        // Start (in-memory engine completes immediately)
+        let started_id = core.start_next().unwrap();
+        assert_eq!(started_id, Some(id.clone()));
+        assert_eq!(core.tasks.get(&id).unwrap().state, TaskState::Downloading);
+
+        // Update progress
+        core.update_progress(&id, Progress::new(512, Some(1024))).unwrap();
+        let stored = core.repository.get(&id).unwrap().unwrap();
+        assert_eq!(stored.progress.downloaded_bytes, 512);
+        assert_eq!(stored.progress.total_bytes, Some(1024));
+
+        // Pause
+        core.pause_task(&id).unwrap();
+        assert_eq!(core.tasks.get(&id).unwrap().state, TaskState::Paused);
+
+        // Resume
+        core.resume_task(&id).unwrap();
+        assert_eq!(core.tasks.get(&id).unwrap().state, TaskState::Downloading);
+
+        // Complete (simulate engine completing)
+        core.finish_task(&id, TaskState::Completed).unwrap();
+        assert!(core.tasks.get(&id).unwrap().is_terminal());
+    }
+
+    #[test]
+    fn concurrent_tasks_respect_max_concurrent_limit() {
+        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap(); // max_concurrent_tasks: 2
+        let (source, destination) = task_source();
+
+        let id1 = TaskId::from("concurrent-1");
+        let id2 = TaskId::from("concurrent-2");
+        let id3 = TaskId::from("concurrent-3");
+
+        core.create_task(id1.clone(), source.clone(), destination.clone()).unwrap();
+        core.create_task(id2.clone(), source.clone(), destination.clone()).unwrap();
+        core.create_task(id3.clone(), source, destination).unwrap();
+
+        core.queue_task(&id1, Priority::NORMAL).unwrap();
+        core.queue_task(&id2, Priority::NORMAL).unwrap();
+        core.queue_task(&id3, Priority::HIGH).unwrap();
+
+        // Start first two (max_concurrent_tasks = 2)
+        let r1 = core.start_next().unwrap();
+        let r2 = core.start_next().unwrap();
+        assert!(r1.is_some());
+        assert!(r2.is_some());
+
+        // Third should not start (limit reached)
+        let r3 = core.start_next().unwrap();
+        assert!(r3.is_none());
+
+        // Finish one to free a slot
+        let task1 = core.tasks.get(&id1).unwrap().clone();
+        core.finish_task(&task1.id, TaskState::Completed).unwrap();
+
+        // Now the third (HIGH priority) should start
+        let r3 = core.start_next().unwrap();
+        assert!(r3.is_some());
+        assert_eq!(r3.unwrap(), id3);
+    }
+
+    #[test]
+    fn core_drains_events() {
+        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        let (source, destination) = task_source();
+        let id = TaskId::from("events-task");
+        core.create_task(id.clone(), source, destination).unwrap();
+
+        let events = core.drain_task_events();
+        assert!(!events.is_empty());
+        assert_eq!(events[0], nexum_task::TaskEvent::Created { task_id: id.clone() });
+
+        // After draining, events should be empty
+        assert!(core.drain_task_events().is_empty());
+    }
+
+    #[test]
+    fn core_schedulers_drain_scheduler_events() {
+        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        let (source, destination) = task_source();
+        let id = TaskId::from("sched-events");
+        core.create_task(id.clone(), source, destination).unwrap();
+        core.queue_task(&id, Priority::NORMAL).unwrap();
+
+        let events = core.drain_scheduler_events();
+        assert!(!events.is_empty());
+        assert!(matches!(&events[0], nexum_core::nexum_scheduler::SchedulerEvent::Enqueued { .. }));
+    }
+
+    #[test]
+    fn core_persists_and_recovers_full_lifecycle() {
+        let mut core = Core::with_repository(config(), SqliteRepository::open_in_memory().unwrap()).unwrap();
+        let (source, destination) = task_source();
+        let id = TaskId::from("persist-recover");
+
+        core.create_task(id.clone(), source.clone(), destination.clone()).unwrap();
+        core.queue_task(&id, Priority::NORMAL).unwrap();
+
+        // Save repository and create fresh core
+        let repository = core.repository;
+        let mut fresh = Core::with_repository(config(), repository).unwrap();
+
+        // Recover should restore the queued task
+        let restored = fresh.recover().unwrap();
+        assert_eq!(restored, 1);
+        assert_eq!(fresh.tasks.get(&id).unwrap().state, TaskState::Queued);
+        assert_eq!(fresh.scheduler.queued_len(), 1);
+
+        // Start and pause should also persist
+        fresh.start_next().unwrap();
+        fresh.pause_task(&id).unwrap();
+
+        // After another restart, task should be recovered as queued (not downloading/paused)
+        let repository2 = fresh.repository;
+        let mut restarted = Core::with_repository(config(), repository2).unwrap();
+        assert_eq!(restarted.recover().unwrap(), 1);
+        // State is normalized to Queued during recovery
+        assert_eq!(restarted.tasks.get(&id).unwrap().state, TaskState::Queued);
+    }
+
+    #[test]
+    fn core_removes_task_from_all_subsystems() {
+        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        let (source, destination) = task_source();
+        let id = TaskId::from("remove-task");
+
+        core.create_task(id.clone(), source, destination).unwrap();
+        core.queue_task(&id, Priority::NORMAL).unwrap();
+        core.start_next().unwrap();
+
+        // Remove should clean up all subsystems
+        let removed = core.remove_task(&id).unwrap();
+        assert_eq!(removed.id, id);
+        assert!(core.tasks.get(&id).is_none());
+        assert!(core.repository.get(&id).unwrap().is_none());
+        assert!(core.engine_tasks.is_empty());
+    }
 }
