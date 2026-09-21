@@ -65,9 +65,9 @@ Nexum 从核心向外开发。
 
 ### Phase 2 — Scheduler
 
-- [ ] Queue 抽象
-- [ ] 并发限制
-- [ ] 优先级
+- [x] Queue 抽象
+- [x] 并发限制
+- [x] 优先级
 - [ ] Retry Policy
 - [ ] 暂停 / 恢复调度
 - [ ] 带宽策略抽象
