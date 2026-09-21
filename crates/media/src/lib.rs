@@ -137,7 +137,7 @@ impl std::fmt::Display for JobStatus {
 }
 
 /// Automated job (scheduled task in the media pipeline).
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Job {
     pub id: u32,
     pub name: String,
