@@ -71,6 +71,7 @@ impl<R: TaskRepository> Core<R> {
         source: DownloadSource,
         destination: Destination,
     ) -> Result<DownloadTask, CoreError> {
+        self.resolve_source(source.as_str())?;
         let task = self.tasks.create(id, source, destination)?.clone();
         self.repository.insert(StoredTask::from(task.clone()))?;
         Ok(task)
@@ -206,6 +207,18 @@ mod tests {
         let stored = core.repository.get(&id).unwrap().unwrap();
         assert_eq!(stored.state, TaskState::Queued);
         assert_eq!(stored.progress, Progress::new(128, Some(1024)));
+    }
+
+    #[test]
+    fn rejects_task_creation_with_unsupported_source() {
+        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        let error = core.create_task(
+            "invalid-source",
+            DownloadSource::new("ftp://example.com/file"),
+            Destination::new("/tmp/file"),
+        ).unwrap_err();
+        assert!(matches!(error, CoreError::Resolver(nexum_resolver::ResolverError::UnsupportedScheme(_))));
+        assert!(core.tasks.get(&TaskId::from("invalid-source")).is_none());
     }
 
     #[test]
