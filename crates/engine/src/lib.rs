@@ -412,7 +412,7 @@ impl EngineRegistry {
             .map(|engine| engine.as_ref())
     }
 
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut dyn EngineAdapter + '_> {
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut (dyn EngineAdapter + '_)> {
         self.engines
             .iter_mut()
             .find(|engine| engine.name() == name)
