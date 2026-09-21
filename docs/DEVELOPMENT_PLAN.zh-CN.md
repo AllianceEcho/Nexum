@@ -70,10 +70,12 @@ Nexum 从核心向外开发。
 - [x] 优先级
 - [x] Retry Policy
 - [x] 暂停 / 恢复调度
-- [ ] 带宽策略抽象
+- [x] 带宽策略抽象
 - [x] Scheduler Events
 
 ### Phase 3 — Storage
+
+Scheduler Phase 2 已完成，下一阶段进入 Storage。存储层将通过 Repository trait 与 Core 解耦，并先保留 InMemory 实现作为测试基础。
 
 - [ ] Repository traits
 - [ ] SQLite 实现
