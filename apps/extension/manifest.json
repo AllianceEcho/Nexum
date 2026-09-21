@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Nexum",
+  "version": "0.1.0",
+  "description": "Send downloads to Nexum server",
+  "permissions": ["contextMenus", "storage"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "dist/popup.html",
+    "default_icon": "icons/nexum-48.png"
+  },
+  "icons": {
+    "16": "icons/nexum-16.png",
+    "48": "icons/nexum-48.png",
+    "128": "icons/nexum-128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

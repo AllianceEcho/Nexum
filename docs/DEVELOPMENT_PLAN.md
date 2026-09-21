@@ -103,50 +103,61 @@ Goal: define what a download task is and how it behaves.
 - [x] Task mapping
 - [x] Progress mapping
 - [x] Pause/resume/remove mapping
-- [x] First engine integration
-- [ ] Integration tests with controlled fixtures
+- [x] First engine integration (InMemory)
+- [x] Second engine integration (HTTP with redirect following)
+- [x] Integration tests with controlled fixtures
 
 ### Phase 6 — Nexum Protocol
 
 - [x] Protocol envelope
 - [x] Request/response model
-- [x] Task APIs
+- [x] Task APIs (list, get, create, queue, start, pause, resume, remove)
 - [x] Transport-neutral event stream
-- [x] Error codes
-- [ ] Versioning
-- [ ] Authentication boundary
-- [ ] Compatibility tests
+- [x] Error codes (JSON-RPC 2.0 standard + custom)
+- [x] Versioning (ProtocolVersion V1, server.version RPC)
+- [x] Authentication boundary (Credential, AuthenticationScheme, server.auth RPC)
+- [x] Compatibility tests (version negotiation, credential passthrough)
 
 ### Phase 7 — Server & CLI
 
-- [x] Server process
-- [x] Local server mode
-- [x] CLI task commands
-- [x] CLI JSON-RPC client foundation
-- [ ] Remote connection
-- [ ] CLI task creation
-- [ ] CLI task control
-- [ ] CLI status and logs
-- [ ] Configuration
+- [x] Server process (TCP listener, multi-threaded)
+- [x] Local server mode (default 127.0.0.1:39100)
+- [x] CLI task commands (list, get, create, queue, start, pause, resume, remove)
+- [x] CLI JSON-RPC client (TCP socket, line-based protocol)
+- [x] Remote connection (configured server, timeout handling)
+- [x] CLI task creation (id, source, destination via CLI args)
+- [x] CLI task control (all task operations)
+- [x] CLI status and logs (RPC error formatting, server auth/version)
+- [x] Configuration (CLI flags, config file parsing, server config)
 
 ### Phase 8 — Desktop
 
-- [ ] Tauri shell
-- [ ] React application
-- [ ] Task list
-- [ ] Task detail
-- [ ] Add-download flow
-- [ ] Pause/resume/remove
-- [ ] Settings
-- [ ] Event-driven updates
+- [x] Tauri shell (Tauri 2.0, configurable window)
+- [x] React application (React 19, Vite)
+- [x] Task list (full CRUD, state display, progress)
+- [x] Task detail (expandable rows, byte formatting)
+- [x] Add-download flow (form, validation, create via RPC)
+- [x] Pause/resume/remove (connected to server)
+- [x] Settings (server configuration)
+- [x] Event-driven updates (RPC polling, error handling)
 
 ### Phase 9 — Browser Integration
 
-- [ ] Browser extension
-- [ ] Context-menu integration
-- [ ] Link interception
-- [ ] Send-to-Nexum flow
-- [ ] Server/device selection
+- [x] Browser extension (Manifest v3)
+- [x] Context-menu integration ("Send to Nexum" on links)
+- [x] Link interception (hover detection, downloadable URLs)
+- [x] Send-to-Nexum flow (background service worker, notifications)
+- [x] Server/device selection (chrome.storage.local, popup config)
+
+### Phase 10 — Extensibility
+
+- [x] Plugin manifest (id, name, version, description, author, license, entry)
+- [x] Permission model (None, Read, Write, Network, Execute)
+- [x] Capability API (name, version, features)
+- [x] Plugin SDK skeleton (PathPattern)
+- [ ] Plugin lifecycle (install/unload, version validation)
+- [ ] Resolver plugins (custom source type handlers)
+- [ ] Engine plugins (custom download engine adapters)
 
 ### Phase 10 — Extensibility
 

@@ -103,48 +103,61 @@ Scheduler Phase 2 已完成，下一阶段进入 Storage。存储层将通过 Re
 - [x] Task Mapping
 - [x] Progress Mapping
 - [x] Pause / Resume / Remove Mapping
-- [x] 第一个真实引擎集成
-- [ ] 可控测试环境下的集成测试
+- [x] 第一个真实引擎集成 (InMemory)
+- [x] 第二个引擎集成 (HTTP 重定向跟随)
+- [x] 可控测试环境下的集成测试
 
 ### Phase 6 — Nexum Protocol
 
-- [ ] Protocol Envelope
-- [ ] Request / Response Model
-- [ ] Task APIs
-- [ ] Event Stream
-- [ ] Error Codes
-- [ ] Versioning
-- [ ] Authentication Boundary
-- [ ] Compatibility Tests
+- [x] Protocol Envelope
+- [x] Request / Response Model
+- [x] Task APIs (list, get, create, queue, start, pause, resume, remove)
+- [x] Event Stream (事件信封，传输中立)
+- [x] Error Codes (JSON-RPC 2.0 标准 + 自定义)
+- [x] Versioning (ProtocolVersion V1, server.version RPC)
+- [x] Authentication Boundary (Credential, AuthenticationScheme, server.auth RPC)
+- [x] Compatibility Tests (版本协商、凭证传递)
 
 ### Phase 7 — Server 与 CLI
 
-- [ ] Server Process
-- [ ] Local Server Mode
-- [ ] Remote Connection
-- [ ] CLI 创建任务
-- [ ] CLI 控制任务
-- [ ] CLI 状态与日志
-- [ ] Configuration
+- [x] Server Process (TCP 监听器，多线程)
+- [x] Local Server Mode (默认 127.0.0.1:39100)
+- [x] CLI Task Commands (list, get, create, queue, start, pause, resume, remove)
+- [x] CLI JSON-RPC Client (TCP 套接字，基于行的协议)
+- [x] Remote Connection (配置服务器、超时处理)
+- [x] CLI 创建任务 (CLI 参数传递 id, source, destination)
+- [x] CLI 控制任务 (所有任务操作)
+- [x] CLI 状态与日志 (RPC 错误格式化、服务器认证/版本)
+- [x] Configuration (CLI 参数、配置文件解析、服务器配置)
 
 ### Phase 8 — Desktop
 
-- [ ] Tauri Shell
-- [ ] React Application
-- [ ] Task List
-- [ ] Task Detail
-- [ ] 添加下载
-- [ ] 暂停 / 恢复 / 删除
-- [ ] Settings
-- [ ] Event-driven Updates
+- [x] Tauri Shell (Tauri 2.0, 可配置窗口)
+- [x] React Application (React 19, Vite)
+- [x] Task List (完整 CRUD, 状态显示, 进度)
+- [x] Task Detail (可展开行, 字节格式化)
+- [x] 添加下载 (表单, 验证, RPC 创建)
+- [x] 暂停 / 恢复 / 删除 (连接到服务器)
+- [x] Settings (服务器配置)
+- [x] Event-driven Updates (RPC 轮询, 错误处理)
 
 ### Phase 9 — Browser Integration
 
-- [ ] Browser Extension
-- [ ] Context Menu
-- [ ] Link Interception
-- [ ] Send-to-Nexum
-- [ ] Server / Device Selection
+- [x] Browser Extension (Manifest v3)
+- [x] Context Menu 集成 (链接右键 "发送到 Nexum")
+- [x] Link Interception (悬停检测, 可下载 URL)
+- [x] Send-to-Nexum 流程 (后台服务 Worker, 通知)
+- [x] Server / Device Selection (chrome.storage.local, 弹窗配置)
+
+### Phase 10 — Extensibility
+
+- [x] Plugin Manifest (id, name, version, description, author, license, entry)
+- [x] Permission Model (None, Read, Write, Network, Execute)
+- [x] Capability API (name, version, features)
+- [x] Plugin SDK 骨架 (PathPattern)
+- [ ] 插件生命周期 (安装/卸载, 版本验证)
+- [ ] 解析器插件 (自定义源类型处理)
+- [ ] 引擎插件 (自定义下载引擎适配器)
 
 ### Phase 10 — Extensibility
 
@@ -209,4 +222,4 @@ Protocol、Storage Schema 和 Plugin API 在正式公开前都必须建立明确
 
 ## 6. 当前立即执行
 
-**Phase 2 — Scheduler 已完成。** **Phase 3 — Storage 已完成。** Repository、SQLite、Schema versioning、Migration、Task 持久化与初步重启恢复均已接入。**Phase 4 — Resolver 已完成基础实现，并已接入 Core 任务创建流程。Phase 5 — Engine Adapter 已启动，完成 Adapter 边界、Capabilities 与 Task Mapping。下一步加强 HTTP Engine 集成测试，并开始 Nexum Protocol 边界。**
+**Phase 0–7：全部已完成。** Phase 8（桌面端）已完成 Tauri + React 基础。**Phase 9（浏览器扩展）已完成上下文菜单、链接拦截和发送流程。** 下一步：完善插件 SDK 生命周期、管理、扩展能力，以及媒体管道和自动化 API。

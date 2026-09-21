@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nexum</title>
+    <style>
+      body {
+        width: 320px;
+        padding: 16px;
+        font-family: system-ui, sans-serif;
+        margin: 0;
+      }
+      h1 { font-size: 16px; margin: 0 0 12px; }
+      input { width: 100%; padding: 8px; box-sizing: border-box; margin-bottom: 8px; }
+      button { width: 100%; padding: 8px; margin-bottom: 8px; cursor: pointer; }
+      .status { font-size: 12px; color: #666; margin-bottom: 12px; }
+      .task { padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 6px; }
+      .task .id { font-weight: 500; }
+      .task .source { font-size: 12px; color: #666; }
+      .task .state { font-size: 11px; color: #999; }
+    </style>
+  </head>
+  <body>
+    <h1>Nexum</h1>
+    <input id="server" placeholder="Server (e.g. 127.0.0.1:39100)" />
+    <button id="save">Save Server</button>
+    <div class="status" id="status">Not connected</div>
+    <div id="tasks"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>
