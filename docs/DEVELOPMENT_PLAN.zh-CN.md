@@ -90,11 +90,11 @@ Scheduler Phase 2 已完成，下一阶段进入 Storage。存储层将通过 Re
 - [x] HTTP/HTTPS Source 分类
 - [x] Magnet Source 分类
 - [x] HTTP/HTTPS URL Resolver
-- [ ] Magnet Resolver
-- [ ] 本地 Source 校验
-- [ ] Resolver Registry
-- [ ] Resolver Error Model
-- [ ] Resolver 测试
+- [x] Magnet Resolver
+- [x] 本地 Source 校验
+- [x] Resolver Registry
+- [x] Resolver Error Model
+- [x] Resolver 测试
 
 ### Phase 5 — Engine Adapter
 
@@ -209,4 +209,4 @@ Protocol、Storage Schema 和 Plugin API 在正式公开前都必须建立明确
 
 ## 6. 当前立即执行
 
-**Phase 2 — Scheduler 已完成。** **Phase 3 — Storage 已完成基础实现。** Repository、SQLite、Schema versioning、Migration、Task 持久化与初步重启恢复均已接入。下一步完善恢复语义并进入 **Phase 4 — Resolver**。
+**Phase 2 — Scheduler 已完成。** **Phase 3 — Storage 已完成基础实现。** Repository、SQLite、Schema versioning、Migration、Task 持久化与初步重启恢复均已接入。下一步继续完善 Resolver 校验，并把 Resolver 接入任务创建流程。
