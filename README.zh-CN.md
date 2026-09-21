@@ -1,5 +1,7 @@
 # Nexum
 
+[English](README.md) · [简体中文](README.zh-CN.md)
+
 > **开放、本地优先的下载平台，覆盖 Desktop、Browser、CLI 与自动化场景。**
 
 Nexum 是一个基于 Rust 构建的下载平台，以稳定的 **Core + Protocol** 边界为核心，将任务管理、调度、持久化、Resolver、下载引擎、TCP Server、CLI、桌面客户端、浏览器集成与插件基础能力组织在统一架构中。
