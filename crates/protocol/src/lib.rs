@@ -1,29 +1,69 @@
 //! Nexum JSON-RPC 2.0 protocol primitives.
 
+pub use nexum_security::{
+    AuthenticationError, AuthenticationScheme, Credential, PathPattern, RateLimit, TlsConfig,
+};
+
 use nexum_core::Core;
 use nexum_domain::{Destination, DownloadSource, TaskId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
+use std::path::PathBuf;
 
 pub const JSONRPC_VERSION: &str = "2.0";
+
+/// Protocol version negotiated between client and server.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub enum ProtocolVersion {
+    V1,
+}
+
+impl ProtocolVersion {
+    pub const CURRENT: Self = Self::V1;
+    pub fn as_str(self) -> &'static str {
+        match self { Self::V1 => "1" }
+    }
+}
+
+impl Default for ProtocolVersion {
+    fn default() -> Self { Self::V1 }
+}
+
+impl std::fmt::Display for ProtocolVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 pub const ERR_TASK_NOT_FOUND: i32 = -32004;
 pub const ERR_INTERNAL: i32 = -32603;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RpcRequest {
     pub jsonrpc: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<Value>,
     pub method: String,
     #[serde(default)]
     pub params: Option<Value>,
+    /// Client protocol version. Defaults to V1 for backward compatibility.
+    #[serde(default)]
+    pub version: Option<ProtocolVersion>,
+    /// Optional credential attached to the request.
+    #[serde(default)]
+    pub credential: Option<Credential>,
 }
 impl RpcRequest {
     pub fn new(id: impl Into<Value>, method: impl Into<String>, params: Option<Value>) -> Self {
-        Self { jsonrpc: JSONRPC_VERSION.into(), id: Some(id.into()), method: method.into(), params }
+        Self { jsonrpc: JSONRPC_VERSION.into(), id: Some(id.into()), method: method.into(), params, version: None, credential: None }
+    }
+    pub fn with_credential(mut self, credential: Credential) -> Self {
+        self.credential = Some(credential);
+        self
     }
     pub fn notification(method: impl Into<String>, params: Option<Value>) -> Self {
-        Self { jsonrpc: JSONRPC_VERSION.into(), id: None, method: method.into(), params }
+        Self { jsonrpc: JSONRPC_VERSION.into(), id: None, method: method.into(), params, version: None, credential: None }
     }
     pub fn validate(&self) -> Result<(), RpcError> {
         if self.jsonrpc != JSONRPC_VERSION { return Err(RpcError::InvalidRequest("jsonrpc must be 2.0".into())); }
@@ -92,6 +132,16 @@ impl From<&nexum_task::DownloadTask> for TaskView {
 
 pub struct RpcDispatcher;
 impl RpcDispatcher {
+    /// Returns the protocol version string supported by this server.
+    pub fn version() -> &'static str {
+        ProtocolVersion::CURRENT.as_str()
+    }
+
+    /// Returns the authentication schemes supported by this server.
+    pub fn auth_schemes() -> &'static [&'static str] {
+        &["none"]
+    }
+
     pub fn dispatch<R: nexum_core::nexum_storage::TaskRepository>(core: &mut Core<R>, request: &RpcRequest) -> Option<RpcResponse> {
         let id = request.id.clone();
         let params = request.params.clone().unwrap_or(Value::Null);
@@ -104,6 +154,8 @@ impl RpcDispatcher {
             "task.pause" => Self::task_pause(core, &params),
             "task.resume" => Self::task_resume(core, &params),
             "task.remove" => Self::task_remove(core, &params),
+            "server.version" => Self::server_version(),
+            "server.auth" => Self::server_auth(),
             _ => Err(DispatchError::MethodNotFound),
         };
         if id.is_none() { return None; }
@@ -114,6 +166,15 @@ impl RpcDispatcher {
             Err(DispatchError::Internal(message)) => RpcResponse::error(id, RpcErrorObject::internal_error(message)),
             Err(DispatchError::MethodNotFound) => RpcResponse::error(id, RpcErrorObject::method_not_found(&request.method)),
         })
+    }
+
+    fn server_version() -> Result<Value, DispatchError> {
+        Ok(Value::String(RpcDispatcher::version().to_owned()))
+    }
+
+    fn server_auth() -> Result<Value, DispatchError> {
+        let schemes: Vec<String> = RpcDispatcher::auth_schemes().iter().map(|&s| s.to_owned()).collect();
+        Ok(serde_json::to_value(schemes).map_err(|e| DispatchError::Internal(e.to_string()))?)
     }
 
     fn task_get<R: nexum_core::nexum_storage::TaskRepository>(core: &Core<R>, params: &Value) -> Result<Value, DispatchError> {
@@ -236,6 +297,37 @@ mod tests {
         assert_eq!(request.id, Some(json!(1)));
     }
     #[test]
+    fn parses_request_without_version_defaults_to_v1() {
+        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list"}"#).unwrap();
+        assert_eq!(request.version, None);
+    }
+    #[test]
+    fn parses_request_with_explicit_version() {
+        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","version":"V1"}"#).unwrap();
+        assert_eq!(request.version, Some(ProtocolVersion::V1));
+    }
+    #[test]
+    fn parses_request_with_bearer_credential() {
+        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"Bearer":{"token":"abc123"}}"#).unwrap();
+        match request.credential {
+            Some(Credential::Bearer { token }) => assert_eq!(token, "abc123"),
+            _ => panic!("expected Bearer credential"),
+        }
+    }
+    #[test]
+    fn parses_request_with_apikey_credential() {
+        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"ApiKey":{"key":"my-key"}}"#).unwrap();
+        match request.credential {
+            Some(Credential::ApiKey { key }) => assert_eq!(key, "my-key"),
+            _ => panic!("expected ApiKey credential"),
+        }
+    }
+    #[test]
+    fn parses_request_with_none_credential() {
+        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"None":null}}"#).unwrap();
+        assert_eq!(request.credential, Some(Credential::None));
+    }
+    #[test]
     fn rejects_wrong_protocol_version() {
         let error = parse_request(r#"{"jsonrpc":"1.0","id":1,"method":"task.list"}"#).unwrap_err();
         assert!(matches!(error, RpcError::InvalidRequest(_)));
@@ -252,6 +344,28 @@ mod tests {
         let request = RpcRequest::notification("task.list", None);
         let mut core = Core::default();
         assert!(RpcDispatcher::dispatch(&mut core, &request).is_none());
+    }
+    #[test]
+    fn server_version_returns_current() {
+        assert_eq!(RpcDispatcher::version(), "1");
+    }
+    #[test]
+    fn server_version_method_works() {
+        let mut core = Core::default();
+        let request = RpcRequest::new(1, "server.version", None);
+        let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
+        assert!(response.is_success());
+        assert_eq!(response.result.unwrap(), json!("1"));
+    }
+    #[test]
+    fn server_auth_returns_supported_schemes() {
+        let mut core = Core::default();
+        let request = RpcRequest::new(1, "server.auth", None);
+        let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
+        assert!(response.is_success());
+        let schemes: Vec<&str> = response.result.unwrap().as_array().unwrap()
+            .iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(schemes, vec!["none"]);
     }
     #[test]
     fn unknown_method_is_reported() {
@@ -284,5 +398,36 @@ mod tests {
         let envelope = task_event_to_envelope(&event);
         assert_eq!(envelope.event, "task.created");
         assert_eq!(envelope.data["task_id"], "t1");
+    }
+
+    #[test]
+    fn protocol_version_serializes_and_deserializes() {
+        let v = ProtocolVersion::V1;
+        let json = serde_json::to_string(&v).unwrap();
+        assert_eq!(json, "\"V1\"");
+        let parsed: ProtocolVersion = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, ProtocolVersion::V1);
+    }
+
+    #[test]
+    fn protocol_version_display() {
+        assert_eq!(format!("{}", ProtocolVersion::V1), "1");
+    }
+
+    #[test]
+    fn rpc_request_with_credential_builds_correctly() {
+        let request = RpcRequest::new(1, "task.list", None)
+            .with_credential(Credential::Bearer { token: "secret".into() });
+        match request.credential {
+            Some(Credential::Bearer { token }) => assert_eq!(token, "secret"),
+            _ => panic!("expected Bearer credential"),
+        }
+    }
+
+    #[test]
+    fn authentication_scheme_from_header() {
+        assert_eq!(AuthenticationScheme::from_header("Bearer token123"), AuthenticationScheme::Bearer("token123".into()));
+        assert_eq!(AuthenticationScheme::from_header("ApiKey key456"), AuthenticationScheme::ApiKey("key456".into()));
+        assert_eq!(AuthenticationScheme::from_header(""), AuthenticationScheme::None);
     }
 }
