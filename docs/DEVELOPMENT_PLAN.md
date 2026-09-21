@@ -90,11 +90,11 @@ Goal: define what a download task is and how it behaves.
 - [x] HTTP/HTTPS source classification
 - [x] Magnet source classification
 - [x] HTTP/HTTPS URL resolver
-- [ ] Magnet resolver
-- [ ] Local source validation
-- [ ] Resolver registry
-- [ ] Resolver error model
-- [ ] Resolver tests
+- [x] Magnet resolver
+- [x] Local source validation
+- [x] Resolver registry
+- [x] Resolver error model
+- [x] Resolver tests
 
 ### Phase 5 — Engine Adapter
 
@@ -209,4 +209,4 @@ Protocol, storage schema, and plugin APIs require explicit versioning strategies
 
 ## 6. Immediate Work
 
-**Phase 2 — Scheduler is complete.** Phase 3 — Storage is implemented through the repository boundary, SQLite, schema versioning, migrations, task persistence, and initial restart recovery. Next: harden recovery semantics and move into Phase 4 — Resolver.
+**Phase 2 — Scheduler is complete.** Phase 3 — Storage is implemented through the repository boundary, SQLite, schema versioning, migrations, task persistence, and initial restart recovery. Next: harden resolver validation and integrate resolved sources into task creation.
