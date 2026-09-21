@@ -1,5 +1,7 @@
 # Nexum
 
+[English](README.md) · [简体中文](README.zh-CN.md)
+
 > **An open, local-first download platform for desktop, browser, CLI, and automation.**
 
 Nexum is a Rust-based download platform built around a stable **Core + Protocol** boundary. It brings task management, scheduling, persistence, resolvers, download engines, a TCP server, CLI, desktop client, browser integration, and plugin foundations into one extensible architecture.
