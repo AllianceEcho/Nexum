@@ -172,7 +172,10 @@ pub struct HttpEngine {
 impl Default for HttpEngine {
     fn default() -> Self {
         Self {
-            client: reqwest::blocking::Client::new(),
+            client: reqwest::blocking::Client::builder()
+                .max_redirects(5)
+                .build()
+                .expect("failed to build http client"),
             tasks: std::collections::HashMap::new(),
             next_handle: 0,
         }
@@ -225,31 +228,53 @@ impl EngineAdapter for HttpEngine {
     }
 
     fn start(&mut self, task_id: &TaskId, source: &str, destination: &str) -> Result<EngineTask, EngineError> {
-        let response = self.client.head(source).send()
+        // Use GET with redirect following (up to 5) instead of separate HEAD+GET
+        // This avoids issues where HEAD succeeds but GET follows to a different URL that fails
+        let mut response = self.client.get(source).send()
             .map_err(|error| EngineError::Failed(error.to_string()))?;
+
         if !response.status().is_success() {
-            return Err(EngineError::Failed(format!("HTTP HEAD returned {}", response.status())));
+            return Err(EngineError::Failed(format!("HTTP GET returned {}", response.status())));
         }
 
         self.next_handle += 1;
         let handle = format!("http-{}", self.next_handle);
         let total = response.content_length();
+
+        // Verify destination directory exists
+        if let Some(parent) = std::path::Path::new(destination).parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+
+        let mut file = std::fs::File::create(destination)
+            .map_err(|error| EngineError::Failed(error.to_string()))?;
+
+        let mut downloaded = 0u64;
+        let mut buffer = [0u8; 32 * 1024];
+
+        loop {
+            use std::io::{Read, Write};
+            let read = response.read(&mut buffer)
+                .map_err(|error| EngineError::Failed(error.to_string()))?;
+            if read == 0 { break; }
+            file.write_all(&buffer[..read])
+                .map_err(|error| EngineError::Failed(error.to_string()))?;
+            downloaded += read as u64;
+        }
+
+        let progress = Progress::new(downloaded, total);
+
+        // Determine final state based on whether download completed
+        let state = if total.map(|t| downloaded >= t).unwrap_or(true) {
+            EngineTaskState::Completed
+        } else {
+            EngineTaskState::Downloading
+        };
+
         self.tasks.insert(
             handle.clone(),
-            (task_id.clone(), EngineTaskState::Downloading, Progress::new(0, total), destination.to_owned()),
+            (task_id.clone(), state, progress, destination.to_owned()),
         );
-
-        let _ = self.download(source, destination).map(|progress| {
-            if let Some(entry) = self.tasks.get_mut(&handle) {
-                entry.1 = EngineTaskState::Completed;
-                entry.2 = progress;
-            }
-        }).map_err(|error| {
-            if let Some(entry) = self.tasks.get_mut(&handle) {
-                entry.1 = EngineTaskState::Failed;
-            }
-            error
-        })?;
 
         Ok(EngineTask { task_id: task_id.clone(), handle })
     }
