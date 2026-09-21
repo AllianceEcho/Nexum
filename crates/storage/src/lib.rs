@@ -414,7 +414,10 @@ mod sqlite_tests {
         task.state = TaskState::Queued;
         task.progress = Progress::new(42, Some(100));
         repo.update(task.clone()).unwrap();
-        assert_eq!(repo.get(&TaskId::from("task-1")).unwrap(), Some(task.clone()));
+        assert_eq!(
+            repo.get(&TaskId::from("task-1")).unwrap(),
+            Some(task.clone())
+        );
         assert_eq!(repo.remove(&TaskId::from("task-1")).unwrap(), Some(task));
     }
 
