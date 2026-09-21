@@ -165,3 +165,202 @@ mod tests {
         assert_eq!(task.state, TaskState::Created);
     }
 }
+
+
+pub struct SqliteRepository {
+    connection: rusqlite::Connection,
+}
+
+impl SqliteRepository {
+    pub fn open(path: impl AsRef<std::path::Path>) -> Result<Self, StorageError> {
+        let connection = rusqlite::Connection::open(path)
+            .map_err(|e| StorageError::Other(e.to_string()))?;
+        let repository = Self { connection };
+        repository.initialize()?;
+        Ok(repository)
+    }
+
+    pub fn open_in_memory() -> Result<Self, StorageError> {
+        let connection = rusqlite::Connection::open_in_memory()
+            .map_err(|e| StorageError::Other(e.to_string()))?;
+        let repository = Self { connection };
+        repository.initialize()?;
+        Ok(repository)
+    }
+
+    fn initialize(&self) -> Result<(), StorageError> {
+        self.connection.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER NOT NULL
+            );
+            INSERT INTO schema_version (version)
+            SELECT 1
+            WHERE NOT EXISTS (SELECT 1 FROM schema_version);
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                destination TEXT NOT NULL,
+                state TEXT NOT NULL,
+                downloaded_bytes INTEGER NOT NULL,
+                total_bytes INTEGER,
+                speed_bytes_per_second INTEGER NOT NULL,
+                eta_seconds INTEGER
+            );"
+        ).map_err(|e| StorageError::Other(e.to_string()))
+    }
+
+    fn state_to_str(state: TaskState) -> &'static str {
+        match state {
+            TaskState::Created => "created",
+            TaskState::Queued => "queued",
+            TaskState::Downloading => "downloading",
+            TaskState::Paused => "paused",
+            TaskState::Completed => "completed",
+            TaskState::Failed => "failed",
+            TaskState::Retrying => "retrying",
+        }
+    }
+
+    fn state_from_str(value: &str) -> Result<TaskState, StorageError> {
+        match value {
+            "created" => Ok(TaskState::Created),
+            "queued" => Ok(TaskState::Queued),
+            "downloading" => Ok(TaskState::Downloading),
+            "paused" => Ok(TaskState::Paused),
+            "completed" => Ok(TaskState::Completed),
+            "failed" => Ok(TaskState::Failed),
+            "retrying" => Ok(TaskState::Retrying),
+            _ => Err(StorageError::Other(format!("unknown task state: {value}"))),
+        }
+    }
+
+    fn row_to_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredTask> {
+        let state: String = row.get(3)?;
+        Ok(StoredTask {
+            id: TaskId::from(row.get::<_, String>(0)?),
+            source: DownloadSource::new(row.get::<_, String>(1)?),
+            destination: Destination::new(row.get::<_, String>(2)?),
+            state: Self::state_from_str(&state)
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, Box::new(e)))?,
+            progress: Progress {
+                downloaded_bytes: row.get(4)?,
+                total_bytes: row.get(5)?,
+                speed_bytes_per_second: row.get(6)?,
+                eta_seconds: row.get(7)?,
+            },
+        })
+    }
+}
+
+impl TaskRepository for SqliteRepository {
+    fn insert(&mut self, task: StoredTask) -> Result<(), StorageError> {
+        self.connection.execute(
+            "INSERT INTO tasks
+             (id, source, destination, state, downloaded_bytes, total_bytes, speed_bytes_per_second, eta_seconds)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                task.id.as_str(),
+                task.source.as_str(),
+                task.destination.as_str(),
+                Self::state_to_str(task.state),
+                task.progress.downloaded_bytes,
+                task.progress.total_bytes,
+                task.progress.speed_bytes_per_second,
+                task.progress.eta_seconds,
+            ],
+        ).map_err(|e| match e {
+            rusqlite::Error::SqliteFailure(ref error, _) if error.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_PRIMARYKEY =>
+                StorageError::AlreadyExists(task.id.clone()),
+            other => StorageError::Other(other.to_string()),
+        })?;
+        Ok(())
+    }
+
+    fn get(&self, id: &TaskId) -> Result<Option<StoredTask>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, source, destination, state, downloaded_bytes, total_bytes, speed_bytes_per_second, eta_seconds
+             FROM tasks WHERE id = ?1"
+        ).map_err(|e| StorageError::Other(e.to_string()))?;
+        let mut rows = statement.query(rusqlite::params![id.as_str()])
+            .map_err(|e| StorageError::Other(e.to_string()))?;
+        match rows.next().map_err(|e| StorageError::Other(e.to_string()))? {
+            Some(row) => Self::row_to_task(row).map(Some).map_err(|e| StorageError::Other(e.to_string())),
+            None => Ok(None),
+        }
+    }
+
+    fn list(&self) -> Result<Vec<StoredTask>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, source, destination, state, downloaded_bytes, total_bytes, speed_bytes_per_second, eta_seconds
+             FROM tasks ORDER BY rowid"
+        ).map_err(|e| StorageError::Other(e.to_string()))?;
+        let rows = statement.query_map([], Self::row_to_task)
+            .map_err(|e| StorageError::Other(e.to_string()))?;
+        rows.map(|row| row.map_err(|e| StorageError::Other(e.to_string())))
+            .collect()
+    }
+
+    fn update(&mut self, task: StoredTask) -> Result<(), StorageError> {
+        let changed = self.connection.execute(
+            "UPDATE tasks SET source = ?2, destination = ?3, state = ?4, downloaded_bytes = ?5,
+             total_bytes = ?6, speed_bytes_per_second = ?7, eta_seconds = ?8 WHERE id = ?1",
+            rusqlite::params![
+                task.id.as_str(), task.source.as_str(), task.destination.as_str(),
+                Self::state_to_str(task.state), task.progress.downloaded_bytes,
+                task.progress.total_bytes, task.progress.speed_bytes_per_second, task.progress.eta_seconds,
+            ],
+        ).map_err(|e| StorageError::Other(e.to_string()))?;
+        if changed == 0 {
+            return Err(StorageError::NotFound(task.id));
+        }
+        Ok(())
+    }
+
+    fn remove(&mut self, id: &TaskId) -> Result<Option<StoredTask>, StorageError> {
+        let existing = self.get(id)?;
+        if existing.is_some() {
+            self.connection.execute("DELETE FROM tasks WHERE id = ?1", rusqlite::params![id.as_str()])
+                .map_err(|e| StorageError::Other(e.to_string()))?;
+        }
+        Ok(existing)
+    }
+}
+
+#[cfg(test)]
+mod sqlite_tests {
+    use super::*;
+    use nexum_domain::{Destination, DownloadSource};
+
+    fn task(id: &str) -> StoredTask {
+        DownloadTask::new(id, DownloadSource::new("https://example.com/file"), Destination::new("/tmp/file")).into()
+    }
+
+    #[test]
+    fn sqlite_repository_round_trips_tasks() {
+        let mut repo = SqliteRepository::open_in_memory().unwrap();
+        let original = task("task-1");
+        repo.insert(original.clone()).unwrap();
+        assert_eq!(repo.get(&TaskId::from("task-1")).unwrap(), Some(original));
+    }
+
+    #[test]
+    fn sqlite_repository_persists_updates_and_removals() {
+        let mut repo = SqliteRepository::open_in_memory().unwrap();
+        let mut task = task("task-1");
+        repo.insert(task.clone()).unwrap();
+        task.state = TaskState::Queued;
+        task.progress = Progress::new(42, Some(100));
+        repo.update(task.clone()).unwrap();
+        assert_eq!(repo.get(&TaskId::from("task-1")).unwrap(), Some(task));
+        assert_eq!(repo.remove(&TaskId::from("task-1")).unwrap(), Some(task));
+    }
+
+    #[test]
+    fn sqlite_repository_initializes_schema_version() {
+        let repo = SqliteRepository::open_in_memory().unwrap();
+        let version: i64 = repo.connection.query_row(
+            "SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0)
+        ).unwrap();
+        assert_eq!(version, 1);
+    }
+}
