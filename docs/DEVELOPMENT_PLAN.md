@@ -68,10 +68,10 @@ Goal: define what a download task is and how it behaves.
 - [x] Queue abstraction
 - [x] Concurrency limits
 - [x] Priority
-- [ ] Retry policy
-- [ ] Pause/resume scheduling
+- [x] Retry policy
+- [x] Pause/resume scheduling
 - [ ] Bandwidth policy abstraction
-- [ ] Scheduler events
+- [x] Scheduler events
 
 **Definition of done:** scheduler behavior can be tested with fake tasks and no network access.
 
@@ -206,10 +206,4 @@ Protocol, storage schema, and plugin APIs require explicit versioning strategies
 
 ## 6. Immediate Work
 
-The first coding milestone is Phase 1A + Phase 1B:
-
-1. Implement domain identifiers and download primitives.
-2. Implement the task model and state machine.
-3. Add transition tests for the initial lifecycle.
-4. Keep the implementation engine-independent.
-5. Begin the scheduler only after this foundation is stable.
+Phase 2 is now the active implementation area. Scheduler queueing, concurrency, priority, retry policy, pause/resume, and scheduler events are implemented. The next scheduler item is bandwidth policy abstraction, followed by Phase 3 Storage.
