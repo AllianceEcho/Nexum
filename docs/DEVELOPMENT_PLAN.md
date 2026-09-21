@@ -121,6 +121,7 @@ Goal: define what a download task is and how it behaves.
 
 - [x] Server process
 - [x] Local server mode
+- [x] CLI task commands
 - [ ] Remote connection
 - [ ] CLI task creation
 - [ ] CLI task control
