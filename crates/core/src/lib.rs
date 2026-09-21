@@ -469,7 +469,7 @@ mod tests {
         assert!(!events.is_empty());
         assert!(matches!(
             &events[0],
-            nexum_core::nexum_scheduler::SchedulerEvent::Enqueued { .. }
+            nexum_scheduler::SchedulerEvent::Enqueued { .. }
         ));
     }
 
