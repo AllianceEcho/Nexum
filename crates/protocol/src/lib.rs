@@ -1,6 +1,8 @@
 //! Nexum JSON-RPC 2.0 protocol primitives.
 
-pub use nexum_security::{AuthenticationError, AuthenticationScheme, Credential, RateLimit, TlsConfig};
+pub use nexum_security::{
+    AuthenticationError, AuthenticationScheme, Credential, RateLimit, TlsConfig,
+};
 
 use nexum_core::Core;
 use nexum_domain::{Destination, DownloadSource, TaskId};
