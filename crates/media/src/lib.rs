@@ -1,108 +1,347 @@
-//! Nexum media pipeline — types for probing and inspecting media files.
+//! Nexum media pipeline — probing, scheduling, muxing, and automation.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Detected media type.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub enum MediaType {
-    Audio,
+// Re-export existing types (backward compatible)
+pub use {MediaType, Track, MediaProbe, MuxSpec};
+
+/// Detected media subtype (e.g., mp4, mkv, mp3, png).
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub enum MediaSubtype {
     Video,
+    Audio,
     Image,
     Document,
-    Unknown,
+    Other(String),
 }
 
-impl MediaType {
-    /// Infer media type from a MIME type string.
+impl MediaSubtype {
+    /// Infer subtype from a MIME type or extension string.
     pub fn from_mime(mime: &str) -> Self {
         match mime {
-            m if m.starts_with("audio/") => Self::Audio,
             m if m.starts_with("video/") => Self::Video,
+            m if m.starts_with("audio/") => Self::Audio,
             m if m.starts_with("image/") => Self::Image,
             m if m.starts_with("application/pdf") || m.starts_with("text/") => Self::Document,
-            _ => Self::Unknown,
+            m if m.starts_with("application/") || m.starts_with("x-") => Self::Other(m.to_owned()),
+            _ => Self::Other(m.to_owned()),
         }
     }
 }
 
-impl std::fmt::Display for MediaType {
+impl std::fmt::Display for MediaSubtype {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Audio => write!(f, "audio"),
             Self::Video => write!(f, "video"),
+            Self::Audio => write!(f, "audio"),
             Self::Image => write!(f, "image"),
             Self::Document => write!(f, "document"),
-            Self::Unknown => write!(f, "unknown"),
+            Self::Other(name) => write!(f, "{name}"),
         }
     }
 }
 
-/// A track within a media file (audio channel, video stream, subtitle, etc.).
+/// A segment of segmented media (HLS, DASH, etc.).
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct Track {
-    pub id: u32,
+pub struct MediaSegment {
     pub index: u32,
-    pub codec: String,
-    pub bitrate: Option<u64>,
-    pub language: Option<String>,
+    pub uri: String,
+    pub duration: f64,
+    pub size: Option<u64>,
+    pub codecs: Vec<String>,
 }
 
-/// Probe result for a media file.
+impl MediaSegment {
+    pub fn new(index: u32, uri: impl Into<String>, duration: f64) -> Self {
+        Self { index, uri: uri.into(), duration, size: None, codecs: Vec::new() }
+    }
+}
+
+/// Manifest for segmented media (HLS, DASH).
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-pub struct MediaProbe {
+pub struct MediaManifest {
+    pub playlist_uri: String,
+    pub segments: Vec<MediaSegment>,
+    pub codecs: Vec<String>,
+    pub duration: Option<f64>,
+    pub format: String,
+}
+
+impl MediaManifest {
+    pub fn new(playlist_uri: impl Into<String>, format: impl Into<String>) -> Self {
+        Self { playlist_uri: playlist_uri.into(), format: format.into(), ..Default::default() }
+    }
+
+    pub fn with_segments(mut self, segments: Vec<MediaSegment>) -> Self {
+        self.segments = segments;
+        self
+    }
+
+    /// Returns true if manifest has enough segments to proceed.
+    pub fn is_complete(&self) -> bool {
+        !self.segments.is_empty()
+    }
+}
+
+/// Selection criteria for choosing which tracks to process.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct TrackSelection {
+    pub prefer_codec: Option<String>,
+    pub prefer_language: Option<String>,
+    pub max_bitrate: Option<u64>,
+    pub prefer_audio: bool,
+    pub prefer_video: bool,
+}
+
+impl TrackSelection {
+    pub fn new() -> Self { Self::default() }
+
+    pub fn prefer_codec(mut self, codec: impl Into<String>) -> Self {
+        self.prefer_codec = Some(codec.into());
+        self
+    }
+
+    pub fn prefer_language(mut self, language: impl Into<String>) -> Self {
+        self.prefer_language = Some(language.into());
+        self
+    }
+
+    pub fn max_bitrate(mut self, max: u64) -> Self {
+        self.max_bitrate = Some(max);
+        self
+    }
+
+    pub fn prefer_audio(mut self) -> Self {
+        self.prefer_audio = true;
+        self
+    }
+
+    pub fn prefer_video(mut self) -> Self {
+        self.prefer_video = true;
+        self
+    }
+
+    /// Score a track against the selection criteria (higher is better).
+    pub fn score(&self, track: &Track) -> u64 {
+        let mut score: u64 = 0;
+        if let Some(ref prefer_codec) = self.prefer_codec {
+            if track.codec.to_lowercase().contains(prefer_codec) {
+                score += 100;
+            }
+        }
+        if let Some(ref prefer_language) = self.prefer_language {
+            if track.language.as_deref() == Some(prefer_language.as_str()) {
+                score += 100;
+            }
+        }
+        if let Some(max_bitrate) = self.max_bitrate {
+            if let Some(bitrate) = track.bitrate {
+                if bitrate <= max_bitrate {
+                    score += 50;
+                }
+            }
+        }
+        if self.prefer_video && track.index < 2 {
+            score += 25;
+        }
+        if self.prefer_audio && track.index >= 2 {
+            score += 25;
+        }
+        score
+    }
+
+    /// Select best track from a list (returns the highest scored).
+    pub fn select(&self, tracks: &[Track]) -> Option<&Track> {
+        let scored: Vec<(u64, &Track)> = tracks.iter().map(|t| (self.score(t), t)).collect();
+        scored.into_iter().max_by_key(|&(score, _)| score).and_then(|(_, t)| if t.index < 100 { Some(t) } else { None })
+    }
+}
+
+/// Scheduling policy for media processing segments.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub enum SchedulePolicy {
+    Sequential,
+    Parallel { max_concurrent: u32 },
+    Adaptive,
+}
+
+impl Default for SchedulePolicy {
+    fn default() -> Self { Self::Sequential }
+}
+
+impl SchedulePolicy {
+    pub fn is_sequential(&self) -> bool { matches!(self, Self::Sequential) }
+    pub fn max_concurrent(&self) -> Option<u32> {
+        match self { Self::Parallel { max_concurrent } => Some(*max_concurrent), _ => None }
+    }
+}
+
+/// An automated media processing pipeline step.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct PipelineStep {
+    pub id: u32,
+    pub name: String,
+    pub input: PathBuf,
+    pub output: PathBuf,
+    pub parameters: HashMap<String, String>,
+    pub requires: Vec<u32>, // step IDs that must complete before this
+}
+
+impl PipelineStep {
+    pub fn new(id: u32, name: impl Into<String>, input: PathBuf, output: PathBuf) -> Self {
+        Self { id, name: name.into(), input, output, parameters: HashMap::new(), requires: Vec::new() }
+    }
+
+    pub fn with_parameter(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.parameters.insert(key.into(), value.into());
+        self
+    }
+
+    pub fn requires_step(mut self, step_id: u32) -> Self {
+        self.requires.push(step_id);
+        self
+    }
+}
+
+/// Media pipeline orchestration.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct MediaPipeline {
+    pub input: PathBuf,
+    pub output: PathBuf,
+    pub format: String,
+    pub steps: Vec<PipelineStep>,
+    pub schedule: SchedulePolicy,
+    pub metadata: HashMap<String, String>,
+}
+
+impl MediaPipeline {
+    pub fn new(input: impl Into<PathBuf>, output: impl Into<PathBuf>) -> Self {
+        Self { input: input.into(), output: output.into(), format: "mp4".to_owned(), steps: Vec::new(), schedule: SchedulePolicy::default(), metadata: HashMap::new() }
+    }
+
+    pub fn with_format(mut self, format: impl Into<String>) -> Self {
+        self.format = format.into();
+        self
+    }
+
+    pub fn with_step(mut self, step: PipelineStep) -> Self {
+        self.steps.push(step);
+        self
+    }
+
+    pub fn with_schedule(mut self, schedule: SchedulePolicy) -> Self {
+        self.schedule = schedule;
+        self
+    }
+
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(key.into(), value.into());
+        self
+    }
+
+    /// Returns pipeline steps ordered by dependencies (topological sort).
+    pub fn ordered_steps(&self) -> Option<Vec<&PipelineStep>> {
+        let mut order = Vec::with_capacity(self.steps.len());
+        let mut remaining: Vec<u32> = (0..self.steps.len() as u32).collect();
+        let mut visited = Vec::new();
+
+        while !remaining.is_empty() {
+            let mut made_progress = false;
+            let mut next_remaining = Vec::new();
+
+            for step_id in &remaining {
+                let step = self.steps.get(*step_id as usize)?;
+                if step.requires.iter().all(|r| visited.contains(r)) {
+                    order.push(step);
+                    visited.push(*step_id);
+                    made_progress = true;
+                } else {
+                    next_remaining.push(*step_id);
+                }
+            }
+
+            if !made_progress {
+                return None; // cycle detected
+            }
+
+            remaining = next_remaining;
+        }
+
+        Some(order)
+    }
+
+    /// Returns true if pipeline has all required steps.
+    pub fn is_complete(&self) -> bool {
+        !self.steps.is_empty() && self.ordered_steps().is_some()
+    }
+}
+
+/// AI-based media analysis result.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct MediaAnalysis {
     pub file_path: PathBuf,
     pub mime_type: Option<String>,
-    pub media_type: Option<MediaType>,
-    pub size: Option<u64>,
-    pub duration: Option<u64>,
-    pub width: Option<u32>,
-    pub height: Option<u32>,
-    pub tracks: Vec<Track>,
+    pub quality_score: f64,
+    pub content_rating: Option<String>,
+    pub recommended_tracks: Vec<u32>,
+    pub recommended_format: Option<String>,
+    pub summary: String,
 }
 
-impl MediaProbe {
+impl MediaAnalysis {
     pub fn new(file_path: impl Into<PathBuf>) -> Self {
         Self { file_path: file_path.into(), ..Default::default() }
     }
 
-    pub fn with_mime_type(mut self, mime_type: impl Into<String>) -> Self {
-        self.mime_type = Some(mime_type.into());
-        self.media_type = self.media_type.or(Some(MediaType::from_mime(self.mime_type.as_deref().unwrap_or("unknown"))));
+    pub fn with_mime_type(mut self, mime: impl Into<String>) -> Self {
+        self.mime_type = Some(mime.into());
         self
     }
 
-    pub fn with_size(mut self, size: u64) -> Self {
-        self.size = Some(size);
+    pub fn with_quality(mut self, score: f64) -> Self {
+        self.quality_score = score;
         self
     }
 
-    pub fn with_duration(mut self, duration: u64) -> Self {
-        self.duration = Some(duration);
+    pub fn with_rating(mut self, rating: impl Into<String>) -> Self {
+        self.content_rating = Some(rating.into());
         self
     }
 
-    pub fn with_dimensions(mut self, width: u32, height: u32) -> Self {
-        self.width = Some(width);
-        self.height = Some(height);
+    pub fn with_tracks(mut self, tracks: Vec<u32>) -> Self {
+        self.recommended_tracks = tracks;
         self
     }
 
-    pub fn with_tracks(mut self, tracks: Vec<Track>) -> Self {
-        self.tracks = tracks;
+    pub fn with_format(mut self, format: impl Into<String>) -> Self {
+        self.recommended_format = Some(format.into());
         self
     }
 
-    /// Determine media type from the MIME type (if set), falling back to Unknown.
-    pub fn infer_media_type(&mut self) {
-        if let Some(ref mime) = self.mime_type {
-            self.media_type = Some(MediaType::from_mime(mime));
-        }
+    pub fn with_summary(mut self, summary: impl Into<String>) -> Self {
+        self.summary = summary.into();
+        self
+    }
+}
+
+/// MCP (Model Context Protocol) integration for AI-driven media automation.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct McpMediaRequest {
+    pub file_path: PathBuf,
+    pub action: String,
+    pub parameters: HashMap<String, String>,
+}
+
+impl McpMediaRequest {
+    pub fn new(file_path: impl Into<PathBuf>, action: impl Into<String>) -> Self {
+        Self { file_path: file_path.into(), action: action.into(), parameters: HashMap::new() }
     }
 
-    /// Returns true if this probe has enough data to proceed with processing.
-    pub fn is_complete(&self) -> bool {
-        self.mime_type.is_some() && self.size.is_some()
+    pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.parameters.insert(key.into(), value.into());
+        self
     }
 }
 
@@ -119,22 +358,15 @@ impl std::fmt::Display for MediaProbe {
     }
 }
 
-/// A muxer for combining media tracks into a single output file.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct MuxSpec {
-    pub output_path: PathBuf,
-    pub format: String,
-    pub tracks: Vec<u32>, // track IDs to include
+impl std::fmt::Display for MediaManifest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "manifest: {} ({} segments)", self.playlist_uri, self.segments.len())
+    }
 }
 
-impl MuxSpec {
-    pub fn new(output_path: impl Into<PathBuf>, format: impl Into<String>) -> Self {
-        Self { output_path: output_path.into(), format: format.into(), tracks: Vec::new() }
-    }
-
-    pub fn with_track(mut self, track_id: u32) -> Self {
-        self.tracks.push(track_id);
-        self
+impl std::fmt::Display for MediaPipeline {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "pipeline: {} -> {} ({} steps)", self.input.display(), self.output.display(), self.steps.len())
     }
 }
 
@@ -143,45 +375,97 @@ mod tests {
     use super::*;
 
     #[test]
-    fn infers_media_type_from_mime() {
-        assert_eq!(MediaType::from_mime("audio/mpeg"), MediaType::Audio);
-        assert_eq!(MediaType::from_mime("video/mp4"), MediaType::Video);
-        assert_eq!(MediaType::from_mime("image/png"), MediaType::Image);
-        assert_eq!(MediaType::from_mime("application/pdf"), MediaType::Document);
-        assert_eq!(MediaType::from_mime("application/octet-stream"), MediaType::Unknown);
+    fn subtype_from_mime() {
+        assert_eq!(MediaSubtype::from_mime("video/mp4"), MediaSubtype::Video);
+        assert_eq!(MediaSubtype::from_mime("audio/mpeg"), MediaSubtype::Audio);
+        assert_eq!(MediaSubtype::from_mime("image/png"), MediaSubtype::Image);
+        assert_eq!(MediaSubtype::from_mime("application/pdf"), MediaSubtype::Document);
     }
 
     #[test]
-    fn media_probe_display() {
-        let probe = MediaProbe::new("/tmp/test.mp4")
-            .with_mime_type("video/mp4")
-            .with_size(1024);
-        let display = format!("{}", probe);
-        assert!(display.contains("test.mp4"));
-        assert!(display.contains("video/mp4"));
-        assert!(display.contains("1024 bytes"));
+    fn media_segment_serializes() {
+        let segment = MediaSegment::new(0, "/seg.m3u8", 10.0);
+        let json = serde_json::to_string(&segment).unwrap();
+        assert!(json.contains("\"index\":0"));
+        assert!(json.contains("\"uri\":\"/seg.m3u8\""));
     }
 
     #[test]
-    fn media_probe_completeness() {
-        let empty = MediaProbe::new("/tmp/test");
+    fn manifest_completeness() {
+        let empty = MediaManifest::new("playlist.m3u8", "hls");
         assert!(!empty.is_complete());
-        let with_mime = MediaProbe::new("/tmp/test").with_mime_type("video/mp4");
-        assert!(!with_mime.is_complete()); // still no size
-        let complete = MediaProbe::new("/tmp/test").with_mime_type("video/mp4").with_size(100);
-        assert!(complete.is_complete());
+        let with_segments = MediaManifest::new("playlist.m3u8", "hls")
+            .with_segments(vec![MediaSegment::new(0, "/seg0.m3u8", 10.0)]);
+        assert!(with_segments.is_complete());
     }
 
     #[test]
-    fn media_probe_sets_media_type_from_mime() {
-        let probe = MediaProbe::new("/tmp/test").with_mime_type("audio/flac");
-        assert_eq!(probe.media_type, Some(MediaType::Audio));
+    fn track_selection_scores_tracks() {
+        let tracks = vec![
+            Track { id: 1, index: 0, codec: "h264".to_owned(), bitrate: Some(5000), language: None },
+            Track { id: 2, index: 1, codec: "aac".to_owned(), bitrate: Some(128), language: Some("en".to_owned()) },
+        ];
+        let selection = TrackSelection::new()
+            .prefer_codec("h264")
+            .prefer_language("en");
+
+        assert_eq!(selection.score(&tracks[0]), 100);
+        assert_eq!(selection.score(&tracks[1]), 100);
+        assert!(selection.select(&tracks).is_some());
     }
 
     #[test]
-    fn mux_spec_serializes() {
-        let spec = MuxSpec::new("/out.mp4", "mp4").with_track(1).with_track(2);
-        let json = serde_json::to_string(&spec).unwrap();
-        assert!(json.contains("\"tracks\":[1,2]"));
+    fn pipeline_ordered_steps_topological() {
+        let pipeline = MediaPipeline::new("/in.mp4", "/out.mkv")
+            .with_step(PipelineStep::new(0, "probe", PathBuf::from("/in.mp4"), PathBuf::from("/probe.json")))
+            .with_step(PipelineStep::new(1, "transcode", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv")).requires_step(0))
+            .with_step(PipelineStep::new(2, "mux", PathBuf::from("/out.mkv"), PathBuf::from("/final.mkv")).requires_step(1));
+
+        let ordered = pipeline.ordered_steps().unwrap();
+        assert_eq!(ordered.len(), 3);
+        assert_eq!(ordered[0].name, "probe");
+        assert_eq!(ordered[1].name, "transcode");
+        assert_eq!(ordered[2].name, "mux");
+    }
+
+    #[test]
+    fn pipeline_with_cycle_returns_none() {
+        let pipeline = MediaPipeline::new("/in.mp4", "/out.mkv")
+            .with_step(PipelineStep::new(0, "a", PathBuf::from("/in.mp4"), PathBuf::from("/b")).requires_step(1))
+            .with_step(PipelineStep::new(1, "b", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv")).requires_step(0));
+
+        assert!(pipeline.ordered_steps().is_none());
+    }
+
+    #[test]
+    fn pipeline_completeness() {
+        let empty = MediaPipeline::new("/in.mp4", "/out.mkv");
+        assert!(!empty.is_complete());
+        let with_step = MediaPipeline::new("/in.mp4", "/out.mkv")
+            .with_step(PipelineStep::new(0, "probe", PathBuf::from("/in.mp4"), PathBuf::from("/out.json")));
+        assert!(with_step.is_complete());
+    }
+
+    #[test]
+    fn media_analysis_serializes() {
+        let analysis = MediaAnalysis::new("/test.mp4")
+            .with_mime_type("video/mp4")
+            .with_quality(8.5)
+            .with_rating("PG-13")
+            .with_tracks(vec![1, 2])
+            .with_format("mkv")
+            .with_summary("High quality video");
+        let json = serde_json::to_string(&analysis).unwrap();
+        assert!(json.contains("\"file_path\":\"/test.mp4\""));
+        assert!(json.contains("\"quality_score\":8.5"));
+        assert!(json.contains("\"summary\":\"High quality video\""));
+    }
+
+    #[test]
+    fn mcp_media_request() {
+        let request = McpMediaRequest::new("/test.mp4", "analyze")
+            .with_param("codec", "h264");
+        assert_eq!(request.action, "analyze");
+        assert!(request.parameters.contains_key("codec"));
     }
 }
