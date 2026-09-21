@@ -202,8 +202,6 @@ fn main() {
         ("server", "ping") => {
             // Ping queries both server.version and server.auth
             verify_version = false;
-            ("server.version", None)
-        }
             match get_server_address() {
                 Ok(addr) => {
                     println!("{addr}");
@@ -211,6 +209,7 @@ fn main() {
                 }
                 Err(e) => { eprintln!("{e}"); std::process::exit(1); }
             }
+            ("server.version", None)
         }
         ("config", "set-server") if args.len() == 3 => {
             match Config::new().set_server_address(&args[2]) {
