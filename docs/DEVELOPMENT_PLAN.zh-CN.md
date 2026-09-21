@@ -77,7 +77,7 @@ Nexum 从核心向外开发。
 
 Scheduler Phase 2 已完成，下一阶段进入 Storage。存储层将通过 Repository trait 与 Core 解耦，并先保留 InMemory 实现作为测试基础。
 
-- [ ] Repository traits
+- [x] Repository traits
 - [ ] SQLite 实现
 - [ ] Schema versioning
 - [ ] Migration 机制
@@ -206,4 +206,4 @@ Protocol、Storage Schema 和 Plugin API 在正式公开前都必须建立明确
 
 ## 6. 当前立即执行
 
-当前继续推进 **Phase 2 — Scheduler**。Queue、并发限制、优先级、Retry Policy、暂停 / 恢复以及 Scheduler Events 已经实现。下一项是带宽策略抽象，完成后进入 Phase 3 — Storage。
+**Phase 2 — Scheduler 已完成。** 当前进入 **Phase 3 — Storage**，首先建立 Repository trait、StoredTask 模型与 InMemoryRepository；下一步接入 SQLite、Schema versioning 与 Migration。
