@@ -70,7 +70,7 @@ Goal: define what a download task is and how it behaves.
 - [x] Priority
 - [x] Retry policy
 - [x] Pause/resume scheduling
-- [ ] Bandwidth policy abstraction
+- [x] Bandwidth policy abstraction
 - [x] Scheduler events
 
 **Definition of done:** scheduler behavior can be tested with fake tasks and no network access.
