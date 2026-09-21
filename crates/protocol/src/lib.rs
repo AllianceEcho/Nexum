@@ -343,9 +343,11 @@ impl RpcDispatcher {
             nexum_core::nexum_scheduler::Priority::NORMAL,
         )
         .map_err(|e| match e {
-            nexum_core::CoreError::Scheduler(nexum_core::nexum_scheduler::SchedulerError::Task(
-                nexum_core::nexum_task::TaskServiceError::NotFound(_),
-            )) => DispatchError::TaskNotFound("task not found".into()),
+            nexum_core::CoreError::Scheduler(
+                nexum_core::nexum_scheduler::SchedulerError::Task(
+                    nexum_core::nexum_task::TaskServiceError::NotFound(_),
+                ),
+            ) => DispatchError::TaskNotFound("task not found".into()),
             _ => DispatchError::Internal(format!("{e:?}")),
         })?;
         Ok(Value::Bool(true))
