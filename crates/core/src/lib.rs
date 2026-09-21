@@ -5,7 +5,7 @@ pub use nexum_scheduler;
 pub use nexum_task;
 
 use nexum_domain::{Destination, DownloadSource, TaskId};
-use nexum_scheduler::{Priority, Scheduler, SchedulerConfig};
+use nexum_scheduler::{Priority, Scheduler, SchedulerConfig, SchedulerEvent};
 use nexum_task::{DownloadTask, TaskService, TaskServiceError};
 
 pub struct Core {
@@ -42,5 +42,31 @@ impl Core {
         &mut self,
     ) -> Result<Option<TaskId>, nexum_scheduler::SchedulerError> {
         self.scheduler.start_next(&mut self.tasks)
+    }
+
+    pub fn pause_task(
+        &mut self,
+        id: &TaskId,
+    ) -> Result<(), nexum_scheduler::SchedulerError> {
+        self.scheduler.pause(&mut self.tasks, id)
+    }
+
+    pub fn resume_task(
+        &mut self,
+        id: &TaskId,
+    ) -> Result<bool, nexum_scheduler::SchedulerError> {
+        self.scheduler.resume(&mut self.tasks, id)
+    }
+
+    pub fn finish_task(
+        &mut self,
+        id: &TaskId,
+        state: nexum_task::TaskState,
+    ) -> Result<(), nexum_scheduler::SchedulerError> {
+        self.scheduler.mark_finished(&mut self.tasks, id, state)
+    }
+
+    pub fn drain_scheduler_events(&mut self) -> Vec<SchedulerEvent> {
+        self.scheduler.drain_events()
     }
 }
