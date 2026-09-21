@@ -21,6 +21,44 @@ pub struct RetryPolicy {
     pub max_retries: u32,
 }
 
+pub trait BandwidthPolicy {
+    fn limit_bytes_per_second(&self, active_tasks: usize) -> Option<u64>;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UnlimitedBandwidth;
+
+impl BandwidthPolicy for UnlimitedBandwidth {
+    fn limit_bytes_per_second(&self, _active_tasks: usize) -> Option<u64> {
+        None
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FixedBandwidth {
+    pub bytes_per_second: u64,
+}
+
+impl BandwidthPolicy for FixedBandwidth {
+    fn limit_bytes_per_second(&self, _active_tasks: usize) -> Option<u64> {
+        Some(self.bytes_per_second)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PerTaskBandwidth {
+    pub total_bytes_per_second: u64,
+}
+
+impl BandwidthPolicy for PerTaskBandwidth {
+    fn limit_bytes_per_second(&self, active_tasks: usize) -> Option<u64> {
+        if active_tasks == 0 {
+            return Some(self.total_bytes_per_second);
+        }
+        Some(self.total_bytes_per_second / active_tasks as u64)
+    }
+}
+
 impl Default for RetryPolicy {
     fn default() -> Self { Self { max_retries: 3 } }
 }
@@ -29,11 +67,43 @@ impl Default for RetryPolicy {
 pub struct SchedulerConfig {
     pub max_concurrent_tasks: usize,
     pub retry_policy: RetryPolicy,
+    pub bandwidth_policy: BandwidthPolicyKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BandwidthPolicyKind {
+    Unlimited,
+    Fixed { bytes_per_second: u64 },
+    Shared { total_bytes_per_second: u64 },
+}
+
+impl Default for BandwidthPolicyKind {
+    fn default() -> Self { Self::Unlimited }
+}
+
+impl BandwidthPolicy for BandwidthPolicyKind {
+    fn limit_bytes_per_second(&self, active_tasks: usize) -> Option<u64> {
+        match self {
+            Self::Unlimited => None,
+            Self::Fixed { bytes_per_second } => Some(*bytes_per_second),
+            Self::Shared { total_bytes_per_second } => {
+                if active_tasks == 0 {
+                    Some(*total_bytes_per_second)
+                } else {
+                    Some(*total_bytes_per_second / active_tasks as u64)
+                }
+            }
+        }
+    }
 }
 
 impl Default for SchedulerConfig {
     fn default() -> Self {
-        Self { max_concurrent_tasks: 3, retry_policy: RetryPolicy::default() }
+        Self {
+            max_concurrent_tasks: 3,
+            retry_policy: RetryPolicy::default(),
+            bandwidth_policy: BandwidthPolicyKind::default(),
+        }
     }
 }
 
@@ -189,6 +259,10 @@ impl Scheduler {
 
     pub fn queued_len(&self) -> usize { self.queue.len() }
     pub fn active_len(&self) -> usize { self.active_tasks }
+
+    pub fn bandwidth_limit_bytes_per_second(&self) -> Option<u64> {
+        self.config.bandwidth_policy.limit_bytes_per_second(self.active_tasks)
+    }
 
     pub fn drain_events(&mut self) -> Vec<SchedulerEvent> {
         std::mem::take(&mut self.events)
