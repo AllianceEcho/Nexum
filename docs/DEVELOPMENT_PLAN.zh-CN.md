@@ -86,7 +86,10 @@ Scheduler Phase 2 已完成，下一阶段进入 Storage。存储层将通过 Re
 
 ### Phase 4 — Resolver
 
-- [ ] HTTP/HTTPS URL Resolver
+- [x] Resolver Trait 与 Request / Result Model
+- [x] HTTP/HTTPS Source 分类
+- [x] Magnet Source 分类
+- [x] HTTP/HTTPS URL Resolver
 - [ ] Magnet Resolver
 - [ ] 本地 Source 校验
 - [ ] Resolver Registry
