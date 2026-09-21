@@ -4,40 +4,40 @@ Nexum's roadmap will evolve as the architecture is validated and community feedb
 
 ## Phase 1 — Core
 
-- [ ] Rust workspace
-- [ ] Domain model
-- [ ] Download task state machine
-- [ ] Scheduler
-- [ ] Persistent storage
-- [ ] Event bus
-- [ ] Engine Adapter interface
+- [x] Rust workspace
+- [x] Domain model
+- [x] Download task state machine
+- [x] Scheduler
+- [x] Persistent storage
+- [x] Event bus
+- [x] Engine Adapter interface
 
 ## Phase 2 — Protocol
 
-- [ ] Nexum Protocol
-- [ ] Task CRUD
-- [ ] Task control
-- [ ] Progress events
-- [ ] Authentication and authorization model
+- [x] Nexum Protocol
+- [x] Task CRUD
+- [x] Task control
+- [x] Progress events
+- [x] Authentication and authorization model
 
 ## Phase 3 — Clients
 
-- [ ] CLI foundation
-- [ ] Server foundation
-- [ ] Desktop foundation
+- [x] CLI foundation
+- [x] Server foundation
+- [x] Desktop foundation (Tauri 2.0 + React 19)
 - [ ] Browser integration
 
 ## Phase 4 — Extensibility
 
-- [ ] Plugin manifest
-- [ ] Permission model
-- [ ] Plugin SDK
+- [x] Plugin manifest (id, name, version, description, author, license)
+- [x] Permission model (None, Read, Write, Network, Execute)
+- [x] Plugin SDK skeleton (Capability, PathPattern)
 - [ ] Resolver extensions
 - [ ] Engine extensions
 
 ## Phase 5 — Media & Automation
 
-- [ ] Media pipeline
+- [ ] Media pipeline (MediaProbe, Track, MuxSpec)
 - [ ] Automation APIs
 - [ ] AI/MCP integration
 - [ ] Remote device management

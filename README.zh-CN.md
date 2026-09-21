@@ -39,47 +39,28 @@ Nexum 希望提供一个统一的下载核心，以及可以运行在不同环�
 ## 主要组件
 
 - **Nexum Core** — 下载任务、调度、状态机、事件与生命周期。
-- **Nexum Protocol** — 客户端与核心之间的统一通信协议。
-- **Engine Adapter** — 对接不同下载引擎。
+- **Nexum Protocol** — 客户端与核心之间的统一通信协议（JSON-RPC 2.0、版本协商、鉴权边界）。
+- **Engine Adapter** — 对接不同下载引擎（InMemory 完整生命周期、HTTP 重定向跟随）。
 - **Resolver** — 将 URL、Magnet 等输入解析为统一下载任务。
-- **Server** — 提供远程下载能力。
-- **CLI** — 面向终端与自动化场景。
-- **Desktop** — 面向桌面用户的图形界面。
-- **Browser** — 浏览器集成。
-- **Plugin SDK** — 面向扩展与第三方能力。
-
-## 项目结构
-
-```text
-nexum/
-├── apps/
-│   ├── desktop/
-│   ├── server/
-│   ├── cli/
-│   └── extension/
-├── crates/
-│   ├── core/
-│   ├── domain/
-│   ├── task/
-│   ├── scheduler/
-│   ├── storage/
-│   ├── resolver/
-│   ├── protocol/
-│   ├── plugin/
-│   ├── security/
-│   ├── media/
-│   └── engine/
-├── packages/
-│   ├── sdk/
-│   ├── types/
-│   └── ui/
-├── plugins/
-└── docs/
-```
+- **Server** — 提供远程下载服务（TCP、可配置、优雅关闭）。
+- **CLI** — 面向终端与自动化场景（JSON-RPC 客户端、配置管理、认证）。
+- **Desktop** — Tauri 2.0 + React 19 桌面应用（完整任务管理）。
+- **Browser** — 浏览器集成（计划中）。
+- **Plugin SDK** — 面向扩展与第三方能力（清单、权限、能力骨架）。
 
 ## 开发状态
 
-Nexum 当前处于早期开发阶段。项目首先建立核心架构、协议与工程基础，再逐步实现桌面端、远程能力、扩展系统与媒体能力。
+**Phase 0–7：核心已完成。** Phase 8（桌面端）：Tauri + React 完整任务管理。Phase 9–11：浏览器扩展、插件 SDK、媒体与自动化。
+
+- 核心任务生命周期，包含状态机（Created → Queued → Downloading → Completed/Failed/Paused/Retrying）
+- JSON-RPC 2.0 协议，包含版本协商与鉴权边界
+- 调度器：优先级、并发限制、重试策略、带宽控制
+- 存储：内存与 SQLite，包含 schema 迁移与恢复
+- 解析器：HTTP/HTTPS、Magnet、本地文件分类
+- 引擎适配器：InMemory（完整生命周期）、HTTP（重定向跟随、进度上报）
+- 服务端：TCP、可配置、凭证支持、优雅关闭
+- 客户端：完整的任务 CRUD、配置管理、认证、服务器命令
+- 桌面端：Tauri 2.0 + React 19，完整任务列表、创建、队列、暂停/恢复、删除
 
 查看：
 
