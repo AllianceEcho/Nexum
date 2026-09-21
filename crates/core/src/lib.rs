@@ -162,3 +162,63 @@ impl<R: TaskRepository> Core<R> {
         self.scheduler.drain_events()
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nexum_domain::{Destination, DownloadSource, Progress};
+    use nexum_storage::SqliteRepository;
+
+    fn config() -> SchedulerConfig {
+        SchedulerConfig { max_concurrent_tasks: 2, ..SchedulerConfig::default() }
+    }
+
+    fn task_source() -> (DownloadSource, Destination) {
+        (DownloadSource::new("https://example.com/file"), Destination::new("/tmp/file"))
+    }
+
+    #[test]
+    fn injected_repository_persists_task_state() {
+        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        let (source, destination) = task_source();
+        let id = TaskId::from("task-1");
+        core.create_task(id.clone(), source, destination).unwrap();
+        core.queue_task(&id, Priority::HIGH).unwrap();
+        core.update_progress(&id, Progress::new(128, Some(1024))).unwrap();
+
+        let stored = core.repository.get(&id).unwrap().unwrap();
+        assert_eq!(stored.state, TaskState::Queued);
+        assert_eq!(stored.progress, Progress::new(128, Some(1024)));
+    }
+
+    #[test]
+    fn recovery_rebuilds_queued_tasks() {
+        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        let (source, destination) = task_source();
+        let id = TaskId::from("task-1");
+        core.create_task(id.clone(), source, destination).unwrap();
+        core.queue_task(&id, Priority::NORMAL).unwrap();
+
+        let repository = core.repository;
+        let mut restarted = Core::with_repository(config(), repository).unwrap();
+        assert_eq!(restarted.recover().unwrap(), 1);
+        assert_eq!(restarted.tasks.get(&id).unwrap().state, TaskState::Queued);
+        assert_eq!(restarted.scheduler.queued_len(), 1);
+    }
+
+    #[test]
+    fn sqlite_repository_can_be_injected_into_core() {
+        let mut core = Core::with_repository(config(), SqliteRepository::open_in_memory().unwrap()).unwrap();
+        let (source, destination) = task_source();
+        let id = TaskId::from("sqlite-task");
+        core.create_task(id.clone(), source, destination).unwrap();
+        core.queue_task(&id, Priority::NORMAL).unwrap();
+        core.start_next().unwrap();
+        core.update_progress(&id, Progress::new(64, Some(100))).unwrap();
+
+        let stored = core.repository.get(&id).unwrap().unwrap();
+        assert_eq!(stored.state, TaskState::Downloading);
+        assert_eq!(stored.progress.downloaded_bytes, 64);
+    }
+}
