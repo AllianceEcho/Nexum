@@ -367,7 +367,7 @@ mod tests {
             max_concurrent_tasks: 0,
             ..SchedulerConfig::default()
         });
-        assert_eq!(result, Err(SchedulerError::InvalidConcurrencyLimit));
+        assert!(matches!(result, Err(SchedulerError::InvalidConcurrencyLimit)));
     }
 
     #[test]
@@ -503,6 +503,7 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             retry_policy: RetryPolicy { max_retries: 2 },
+            ..SchedulerConfig::default()
         })
         .unwrap();
         scheduler
@@ -559,6 +560,7 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             retry_policy: RetryPolicy { max_retries: 1 },
+            ..SchedulerConfig::default()
         })
         .unwrap();
         scheduler
