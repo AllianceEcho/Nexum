@@ -119,8 +119,8 @@ Goal: define what a download task is and how it behaves.
 
 ### Phase 7 — Server & CLI
 
-- [ ] Server process
-- [ ] Local server mode
+- [x] Server process
+- [x] Local server mode
 - [ ] Remote connection
 - [ ] CLI task creation
 - [ ] CLI task control
