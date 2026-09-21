@@ -413,7 +413,7 @@ mod tests {
 
         let events = core.drain_scheduler_events();
         assert!(!events.is_empty());
-        assert!(matches!(&events[0], nexum_core::nexum_scheduler::SchedulerEvent::Enqueued { .. }));
+        assert!(matches!(&events[0], nexum_scheduler::SchedulerEvent::Enqueued { .. }));
     }
 
     #[test]

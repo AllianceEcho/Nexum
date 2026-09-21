@@ -1,15 +1,12 @@
 //! Nexum JSON-RPC 2.0 protocol primitives.
 
-pub use nexum_security::{
-    AuthenticationError, AuthenticationScheme, Credential, PathPattern, RateLimit, TlsConfig,
-};
+pub use nexum_security::{AuthenticationError, AuthenticationScheme, Credential, RateLimit, TlsConfig};
 
 use nexum_core::Core;
 use nexum_domain::{Destination, DownloadSource, TaskId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
-use std::path::PathBuf;
 
 pub const JSONRPC_VERSION: &str = "2.0";
 
@@ -287,6 +284,7 @@ impl EventBuffer {
 mod tests {
     use super::*;
     use nexum_core::Core;
+    use nexum_core::nexum_scheduler::{SchedulerConfig, SchedulerEvent};
     use nexum_domain::{Destination, DownloadSource};
     use serde_json::json;
 
@@ -342,7 +340,7 @@ mod tests {
     #[test]
     fn notifications_have_no_response() {
         let request = RpcRequest::notification("task.list", None);
-        let mut core = Core::default();
+        let mut core = Core::new(SchedulerConfig::default()).unwrap();
         assert!(RpcDispatcher::dispatch(&mut core, &request).is_none());
     }
     #[test]
@@ -351,7 +349,7 @@ mod tests {
     }
     #[test]
     fn server_version_method_works() {
-        let mut core = Core::default();
+        let mut core = Core::new(SchedulerConfig::default()).unwrap();
         let request = RpcRequest::new(1, "server.version", None);
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert!(response.is_success());
@@ -359,7 +357,7 @@ mod tests {
     }
     #[test]
     fn server_auth_returns_supported_schemes() {
-        let mut core = Core::default();
+        let mut core = Core::new(SchedulerConfig::default()).unwrap();
         let request = RpcRequest::new(1, "server.auth", None);
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert!(response.is_success());
@@ -370,13 +368,13 @@ mod tests {
     #[test]
     fn unknown_method_is_reported() {
         let request = RpcRequest::new(1, "task.unknown", None);
-        let mut core = Core::default();
+        let mut core = Core::new(SchedulerConfig::default()).unwrap();
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert_eq!(response.error.unwrap().code, -32601);
     }
     #[test]
     fn scheduler_event_maps_to_stable_envelope() {
-        let event = nexum_core::nexum_scheduler::SchedulerEvent::Retrying { task_id: TaskId::from("t1"), attempt: 2 };
+        let event = SchedulerEvent::Retrying { task_id: TaskId::from("t1"), attempt: 2 };
         let envelope = scheduler_event_to_envelope(&event);
         assert_eq!(envelope.event, "scheduler.retrying");
         assert_eq!(envelope.data["attempt"], 2);
@@ -384,7 +382,7 @@ mod tests {
 
     #[test]
     fn event_buffer_collects_core_events() {
-        let mut core = Core::default();
+        let mut core = Core::new(SchedulerConfig::default()).unwrap();
         core.create_task(TaskId::from("t1"), DownloadSource::new("https://example.com/file"), Destination::new("/tmp/file")).unwrap();
         let mut buffer = EventBuffer::new();
         buffer.collect_core(&mut core);
