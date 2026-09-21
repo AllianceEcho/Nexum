@@ -55,6 +55,7 @@ impl Config {
                 content
                     .lines()
                     .find(|l| l.trim().starts_with(&format!("{key}=")))
+                    .map(|line| line.to_owned())
             })
             .and_then(|line| line.trim().split_once('='))
             .and_then(|(_, value)| Some(value.trim().to_owned()))
@@ -117,7 +118,7 @@ impl JsonRpcClient {
         params: Option<Value>,
         credential: Option<Credential>,
     ) -> Result<Value, String> {
-        let request = RpcRequest::new(id, method, params).with_credential(credential);
+        let request = RpcRequest::new(id, method, params).with_credential(credential.unwrap_or(nexum_security::Credential::None));
         let payload = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         self.stream
             .write_all(payload.as_bytes())

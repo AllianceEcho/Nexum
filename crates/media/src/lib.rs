@@ -168,8 +168,14 @@ impl Job {
 }
 
 /// Wrapper for f64 that implements Eq (f64::nan != f64::nan by IEEE 754).
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct EqF64(pub f64);
+
+impl Eq for EqF64 {}
+
+impl Default for EqF64 {
+    fn default() -> Self { Self(0.0) }
+}
 
 /// Result of a completed job.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]

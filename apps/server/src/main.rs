@@ -234,7 +234,7 @@ fn main() -> std::io::Result<()> {
 
     let address = format!("127.0.0.1:{}", config.port);
     let listener = TcpListener::bind(&address)?;
-    let core = Arc::new(Mutex::new(Core::default()));
+    let core = Arc::new(Mutex::new(Core::new(nexum_core::nexum_scheduler::SchedulerConfig::default()).unwrap()));
 
     eprintln!("Nexum server listening on {address}");
     eprintln!(
