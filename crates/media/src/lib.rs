@@ -50,7 +50,7 @@ pub struct Track {
     pub id: u32,
     pub codec: String,
     pub bitrate: Option<u64>,
-    pub duration: Option<F64Eq>,
+    pub duration: Option<f64>,
 }
 
 /// Selection criteria for a track.
@@ -66,7 +66,7 @@ pub enum TrackSelection {
 pub struct MediaProbe {
     pub path: PathBuf,
     pub media_type: MediaType,
-    pub duration: Option<F64Eq>,
+    pub duration: Option<f64>,
     pub size: u64,
 }
 
@@ -137,7 +137,7 @@ impl std::fmt::Display for JobStatus {
 }
 
 /// Automated job (scheduled task in the media pipeline).
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Job {
     pub id: u32,
     pub name: String,
@@ -167,22 +167,11 @@ impl Job {
     }
 }
 
-/// Helper wrapper for f64 that implements Eq via raw bit comparison.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct F64Eq(pub f64);
-
-impl PartialEq for F64Eq {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.to_bits() == other.0.to_bits()
-    }
-}
-impl Eq for F64Eq {}
-
 /// Result of a completed job.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct JobResult {
     pub output_path: PathBuf,
-    pub duration: F64Eq,
+    pub duration: f64,
     pub files_produced: Vec<PathBuf>,
     pub metadata: HashMap<String, String>,
 }
@@ -528,7 +517,7 @@ mod tests {
         );
         let json = serde_json::to_string(&job).unwrap();
         assert!(json.contains("\"id\":1"));
-        assert!(json.contains("\"status\":\"pending\""));
+        assert!(json.contains("\"status\":\"Pending\""));
     }
 
     #[test]
@@ -641,14 +630,13 @@ mod tests {
 
     #[test]
     fn media_processor_schedules_and_executes() {
-        let processor = MediaProcessor::new();
+        let mut processor = AutomationApiImpl::new();
         let job = Job::new(
             1,
             "test",
             PathBuf::from("/in.mp4"),
             PathBuf::from("/out.mkv"),
         );
-        let processor = &mut (processor as AutomationApiImpl);
 
         processor.schedule(job).unwrap();
         assert!(processor.jobs().contains_key(&1));
@@ -666,7 +654,7 @@ mod tests {
 
     #[test]
     fn media_processor_runs_workflow() {
-        let processor = MediaProcessor::new();
+        let mut processor = AutomationApiImpl::new();
         let workflow = WorkflowDefinition::new("test")
             .with_step(WorkflowStep::new(
                 0,
@@ -679,7 +667,6 @@ mod tests {
                     .with_depends_on(0),
             );
 
-        let processor = &mut (processor as AutomationApiImpl);
         let results = processor.run_workflow(workflow).unwrap();
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|j| j.status == JobStatus::Completed));

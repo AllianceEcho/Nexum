@@ -76,17 +76,12 @@ pub struct SchedulerConfig {
     pub bandwidth_policy: BandwidthPolicyKind,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub enum BandwidthPolicyKind {
+    #[default]
     Unlimited,
     Fixed { bytes_per_second: u64 },
     Shared { total_bytes_per_second: u64 },
-}
-
-impl Default for BandwidthPolicyKind {
-    fn default() -> Self {
-        Self::Unlimited
-    }
 }
 
 impl BandwidthPolicy for BandwidthPolicyKind {
@@ -139,6 +134,15 @@ pub enum SchedulerEvent {
 pub enum SchedulerError {
     InvalidConcurrencyLimit,
     Task(TaskServiceError),
+}
+
+impl std::fmt::Display for SchedulerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidConcurrencyLimit => write!(f, "invalid concurrency limit"),
+            Self::Task(error) => write!(f, "task error: {error:?}"),
+        }
+    }
 }
 
 impl From<TaskServiceError> for SchedulerError {
@@ -292,6 +296,17 @@ impl Scheduler {
         Ok(())
     }
 
+    /// Requeue a task that has completed or failed so it can be restarted.
+    pub fn requeue_finished(
+        &mut self,
+        task_service: &mut TaskService,
+        task_id: &TaskId,
+    ) -> Result<(), SchedulerError> {
+        task_service.transition(task_id, TaskState::Queued)?;
+        self.push_queue(task_id, Priority::NORMAL);
+        Ok(())
+    }
+
     pub fn queued_len(&self) -> usize {
         self.queue.len()
     }
@@ -358,7 +373,10 @@ mod tests {
             max_concurrent_tasks: 0,
             ..SchedulerConfig::default()
         });
-        assert_eq!(result, Err(SchedulerError::InvalidConcurrencyLimit));
+        assert!(matches!(
+            result,
+            Err(SchedulerError::InvalidConcurrencyLimit)
+        ));
     }
 
     #[test]
@@ -494,6 +512,7 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             retry_policy: RetryPolicy { max_retries: 2 },
+            ..SchedulerConfig::default()
         })
         .unwrap();
         scheduler
@@ -550,6 +569,7 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             retry_policy: RetryPolicy { max_retries: 1 },
+            ..SchedulerConfig::default()
         })
         .unwrap();
         scheduler

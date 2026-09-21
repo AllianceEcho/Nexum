@@ -23,6 +23,8 @@ impl TaskState {
                 | (Self::Downloading, Self::Paused)
                 | (Self::Downloading, Self::Completed)
                 | (Self::Downloading, Self::Failed)
+                | (Self::Completed, Self::Queued)
+                | (Self::Paused, Self::Queued)
                 | (Self::Paused, Self::Downloading)
                 | (Self::Failed, Self::Retrying)
                 | (Self::Retrying, Self::Queued)

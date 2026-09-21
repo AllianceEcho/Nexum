@@ -218,6 +218,7 @@ impl Default for HttpEngine {
     }
 }
 
+#[expect(dead_code)]
 impl HttpEngine {
     pub fn new() -> Self {
         Self::default()
@@ -385,7 +386,7 @@ impl EngineAdapter for HttpEngine {
 }
 
 pub struct EngineRegistry {
-    engines: Vec<Box<dyn EngineAdapter>>,
+    engines: Vec<Box<dyn EngineAdapter + Send>>,
 }
 
 impl Default for EngineRegistry {
@@ -401,11 +402,11 @@ impl EngineRegistry {
         }
     }
 
-    pub fn register(&mut self, engine: Box<dyn EngineAdapter>) {
+    pub fn register(&mut self, engine: Box<dyn EngineAdapter + Send>) {
         self.engines.push(engine);
     }
 
-    pub fn get(&self, name: &str) -> Option<&dyn EngineAdapter> {
+    pub fn get(&self, name: &str) -> Option<&(dyn EngineAdapter + Send)> {
         self.engines
             .iter()
             .find(|engine| engine.name() == name)
@@ -424,7 +425,7 @@ impl EngineRegistry {
             .find(|engine| engine.name() == name)
             .map(|engine| engine.start(task_id, source, destination))
             .ok_or_else(|| EngineError::Failed(format!("engine not found: {name}")))
-            .unwrap_or_else(|e| Err(e))
+            .unwrap_or_else(Err)
     }
 
     pub fn pause_engine(&mut self, name: &str, task: &EngineTask) -> Result<(), EngineError> {
@@ -580,7 +581,7 @@ mod tests {
         assert!(registry.get("missing").is_none());
         assert!(
             registry
-                .start_engine(&TaskId::new("x"), "https://x", "/x")
+                .start_engine("fake", &TaskId::new("x"), "https://x", "/x")
                 .is_ok()
         );
     }

@@ -160,7 +160,7 @@ impl Resolver for LocalResolver {
 }
 
 pub struct ResolverRegistry {
-    resolvers: Vec<Box<dyn Resolver>>,
+    resolvers: Vec<Box<dyn Resolver + Send>>,
 }
 
 impl Default for ResolverRegistry {
@@ -180,7 +180,7 @@ impl ResolverRegistry {
         }
     }
 
-    pub fn with_resolver(mut self, resolver: Box<dyn Resolver>) -> Self {
+    pub fn with_resolver(mut self, resolver: Box<dyn Resolver + Send>) -> Self {
         self.resolvers.push(resolver);
         self
     }
