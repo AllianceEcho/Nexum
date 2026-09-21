@@ -209,7 +209,7 @@ impl Default for HttpEngine {
     fn default() -> Self {
         Self {
             client: reqwest::blocking::Client::builder()
-                .redirect(reqwest::Redirect::limit(5))
+                .redirect(|_| Some(5))
                 .build()
                 .expect("failed to build http client"),
             tasks: std::collections::HashMap::new(),
@@ -412,11 +412,50 @@ impl EngineRegistry {
             .map(|engine| engine.as_ref())
     }
 
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut (dyn EngineAdapter + '_)> {
+    pub fn start_engine(
+        &mut self,
+        name: &str,
+        task_id: &TaskId,
+        source: &str,
+        destination: &str,
+    ) -> Result<EngineTask, EngineError> {
         self.engines
             .iter_mut()
             .find(|engine| engine.name() == name)
-            .map(move |engine| engine.as_mut())
+            .map(|engine| engine.start(task_id, source, destination))
+            .ok_or_else(|| EngineError::Failed(format!("engine not found: {name}")))
+            .transpose()
+            .unwrap_or_else(|e| {
+                if e == EngineError::TaskAlreadyStarted {
+                    Err(EngineError::TaskAlreadyStarted)
+                } else {
+                    Err(e)
+                }
+            })
+    }
+
+    pub fn pause_engine(&mut self, name: &str, task: &EngineTask) -> Result<(), EngineError> {
+        self.engines
+            .iter_mut()
+            .find(|engine| engine.name() == name)
+            .ok_or_else(|| EngineError::Failed(format!("engine not found: {name}")))?
+            .pause(task)
+    }
+
+    pub fn resume_engine(&mut self, name: &str, task: &EngineTask) -> Result<(), EngineError> {
+        self.engines
+            .iter_mut()
+            .find(|engine| engine.name() == name)
+            .ok_or_else(|| EngineError::Failed(format!("engine not found: {name}")))?
+            .resume(task)
+    }
+
+    pub fn remove_engine(&mut self, name: &str, task: &EngineTask) -> Result<(), EngineError> {
+        self.engines
+            .iter_mut()
+            .find(|engine| engine.name() == name)
+            .ok_or_else(|| EngineError::Failed(format!("engine not found: {name}")))?
+            .remove(task)
     }
 
     pub fn names(&self) -> Vec<&str> {
@@ -546,7 +585,7 @@ mod tests {
         assert_eq!(registry.names(), vec!["fake"]);
         assert!(registry.get("fake").is_some());
         assert!(registry.get("missing").is_none());
-        assert!(registry.get_mut("fake").is_some());
+        assert!(registry.start_engine(&TaskId::new("x"), "https://x", "/x").is_ok());
     }
 
     #[test]

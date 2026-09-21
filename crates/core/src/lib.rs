@@ -125,12 +125,12 @@ impl<R: TaskRepository> Core<R> {
             .get(&task_id)
             .cloned()
             .ok_or_else(|| TaskServiceError::NotFound(task_id.clone()))?;
-        let result = match self.engines.get_mut(engine_name) {
-            Some(engine) => engine.start(&task.id, task.source.as_str(), task.destination.as_str()),
-            None => Err(EngineError::Failed(format!(
-                "engine not found: {engine_name}"
-            ))),
-        };
+        let result = self.engines.start_engine(
+            engine_name,
+            &task.id,
+            task.source.as_str(),
+            task.destination.as_str(),
+        );
         match result {
             Ok(engine_task) => {
                 self.engine_tasks
@@ -173,10 +173,7 @@ impl<R: TaskRepository> Core<R> {
 
     pub fn pause_task(&mut self, id: &TaskId) -> Result<(), CoreError> {
         if let Some((engine_name, engine_task)) = self.engine_tasks.get(id).cloned() {
-            self.engines
-                .get_mut(&engine_name)
-                .ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?
-                .pause(&engine_task)?;
+            self.engines.pause_engine(&engine_name, &engine_task)?;
         }
         self.scheduler.pause(&mut self.tasks, id)?;
         self.persist_task(id)
@@ -184,10 +181,7 @@ impl<R: TaskRepository> Core<R> {
 
     pub fn resume_task(&mut self, id: &TaskId) -> Result<bool, CoreError> {
         if let Some((engine_name, engine_task)) = self.engine_tasks.get(id).cloned() {
-            self.engines
-                .get_mut(&engine_name)
-                .ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?
-                .resume(&engine_task)?;
+            self.engines.resume_engine(&engine_name, &engine_task)?;
         }
         let resumed = self.scheduler.resume(&mut self.tasks, id)?;
         if resumed {
@@ -212,10 +206,7 @@ impl<R: TaskRepository> Core<R> {
 
     pub fn remove_task(&mut self, id: &TaskId) -> Result<DownloadTask, CoreError> {
         if let Some((engine_name, engine_task)) = self.engine_tasks.remove(id) {
-            self.engines
-                .get_mut(&engine_name)
-                .ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?
-                .remove(&engine_task)?;
+            self.engines.remove_engine(&engine_name, &engine_task)?;
         }
         let task = self.tasks.remove(id)?;
         self.repository.remove(id)?;
