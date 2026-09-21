@@ -65,9 +65,9 @@ Goal: define what a download task is and how it behaves.
 
 ### Phase 2 — Scheduler
 
-- [ ] Queue abstraction
-- [ ] Concurrency limits
-- [ ] Priority
+- [x] Queue abstraction
+- [x] Concurrency limits
+- [x] Priority
 - [ ] Retry policy
 - [ ] Pause/resume scheduling
 - [ ] Bandwidth policy abstraction
