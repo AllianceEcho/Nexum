@@ -424,7 +424,7 @@ impl EngineRegistry {
             .find(|engine| engine.name() == name)
             .map(|engine| engine.start(task_id, source, destination))
             .ok_or_else(|| EngineError::Failed(format!("engine not found: {name}")))
-            .unwrap_or_else(|e| e)
+            .unwrap_or_else(|e| Err(e))
     }
 
     pub fn pause_engine(&mut self, name: &str, task: &EngineTask) -> Result<(), EngineError> {
