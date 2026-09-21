@@ -192,21 +192,50 @@ impl SqliteRepository {
         self.connection.execute_batch(
             "CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER NOT NULL
-            );
-            INSERT INTO schema_version (version)
-            SELECT 1
-            WHERE NOT EXISTS (SELECT 1 FROM schema_version);
-            CREATE TABLE IF NOT EXISTS tasks (
-                id TEXT PRIMARY KEY,
-                source TEXT NOT NULL,
-                destination TEXT NOT NULL,
-                state TEXT NOT NULL,
-                downloaded_bytes INTEGER NOT NULL,
-                total_bytes INTEGER,
-                speed_bytes_per_second INTEGER NOT NULL,
-                eta_seconds INTEGER
             );"
-        ).map_err(|e| StorageError::Other(e.to_string()))
+        ).map_err(|e| StorageError::Other(e.to_string()))?;
+
+        let count: i64 = self.connection
+            .query_row("SELECT COUNT(*) FROM schema_version", [], |row| row.get(0))
+            .map_err(|e| StorageError::Other(e.to_string()))?;
+
+        if count == 0 {
+            self.connection.execute(
+                "INSERT INTO schema_version (version) VALUES (0)", []
+            ).map_err(|e| StorageError::Other(e.to_string()))?;
+        }
+
+        self.migrate()
+    }
+
+    fn migrate(&self) -> Result<(), StorageError> {
+        let version: i64 = self.connection
+            .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
+            .map_err(|e| StorageError::Other(e.to_string()))?;
+
+        if version > 1 {
+            return Err(StorageError::Other(format!(
+                "unsupported schema version: {version}"
+            )));
+        }
+
+        if version < 1 {
+            self.connection.execute_batch(
+                "CREATE TABLE tasks (
+                    id TEXT PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    destination TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    downloaded_bytes INTEGER NOT NULL,
+                    total_bytes INTEGER,
+                    speed_bytes_per_second INTEGER NOT NULL,
+                    eta_seconds INTEGER
+                );
+                UPDATE schema_version SET version = 1;"
+            ).map_err(|e| StorageError::Other(e.to_string()))?;
+        }
+
+        Ok(())
     }
 
     fn state_to_str(state: TaskState) -> &'static str {
