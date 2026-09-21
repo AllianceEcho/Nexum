@@ -143,12 +143,6 @@ impl JsonRpcClient {
     }
 }
 
-fn format_rpc_error(response: &nexum_protocol::RpcResponse) -> Option<String> {
-    response
-        .error
-        .as_ref()
-        .map(|e| format!("[{}] {}", e.code, e.message))
-}
 
 fn usage() {
     eprintln!("usage:");
