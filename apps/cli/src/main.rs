@@ -118,7 +118,8 @@ impl JsonRpcClient {
         params: Option<Value>,
         credential: Option<Credential>,
     ) -> Result<Value, String> {
-        let request = RpcRequest::new(id, method, params).with_credential(credential.unwrap_or(nexum_security::Credential::None));
+        let request = RpcRequest::new(id, method, params)
+            .with_credential(credential.unwrap_or(nexum_security::Credential::None));
         let payload = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         self.stream
             .write_all(payload.as_bytes())

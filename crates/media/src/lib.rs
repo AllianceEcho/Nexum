@@ -174,7 +174,9 @@ pub struct EqF64(pub f64);
 impl Eq for EqF64 {}
 
 impl Default for EqF64 {
-    fn default() -> Self { Self(0.0) }
+    fn default() -> Self {
+        Self(0.0)
+    }
 }
 
 /// Result of a completed job.
