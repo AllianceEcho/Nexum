@@ -9,7 +9,7 @@ Nexum will be developed from the core outward.
 3. Define the protocol around stable core operations.
 4. Keep persistence behind explicit interfaces.
 5. Add engine integrations only after the core abstractions are testable.
-6. Every milestone must leave the repository in a buildable and testable state.
+6. Every milestone should leave the repository in a buildable and testable state.
 
 ## 2. Milestones
 
@@ -21,47 +21,17 @@ Nexum will be developed from the core outward.
 - [x] English and Simplified Chinese documentation
 - [x] Rust workspace
 - [x] GitHub CI
-- [ ] Workspace builds cleanly on CI
-- [ ] Basic formatting and linting policy
-
-**Definition of done:** a fresh checkout can run the documented Rust checks successfully.
+- [ ] Verified clean workspace build on CI
+- [ ] Formal formatting and linting policy
 
 ### Phase 1 — Domain & Task Core
 
-Goal: define what a download task is and how it behaves.
-
-#### 1A — Domain Model
-
-- [x] Task identifiers
-- [x] Download source model
-- [x] Destination model
-- [x] Basic task metadata
-- [x] Progress model
-- [x] Error model
-
-#### 1B — Task State Machine
-
-- [x] Created
-- [x] Queued
-- [x] Downloading
-- [x] Paused
-- [x] Completed
-- [x] Failed
-- [x] Retry
+- [x] Domain model
+- [x] Task state machine
 - [x] Explicit transition validation
-- [x] Unit tests for valid and invalid transitions
-
-#### 1C — Task Service
-
-- [x] Create task
-- [x] Queue task
-- [x] Pause/resume task
-- [x] Complete/fail task
-- [x] Retry task
-- [x] Remove task
+- [x] Task service
 - [x] Task events
-
-**Definition of done:** task behavior is deterministic and fully unit-tested without a real download engine.
+- [x] Unit tests
 
 ### Phase 2 — Scheduler
 
@@ -73,25 +43,22 @@ Goal: define what a download task is and how it behaves.
 - [x] Bandwidth policy abstraction
 - [x] Scheduler events
 
-**Definition of done:** scheduler behavior can be tested with fake tasks and no network access.
-
 ### Phase 3 — Storage
 
 - [x] Repository traits
+- [x] In-memory repository
 - [x] SQLite implementation
 - [x] Schema versioning
 - [x] Migration mechanism
 - [x] Task persistence
-- [x] Recovery after restart
+- [x] Restart recovery
 
 ### Phase 4 — Resolver
 
 - [x] Resolver trait and request/result model
-- [x] HTTP/HTTPS source classification
-- [x] Magnet source classification
-- [x] HTTP/HTTPS URL resolver
-- [x] Magnet resolver
-- [x] Local source validation
+- [x] HTTP/HTTPS classification and validation
+- [x] Magnet classification and validation
+- [x] Local source handling
 - [x] Resolver registry
 - [x] Resolver error model
 - [x] Resolver tests
@@ -100,96 +67,82 @@ Goal: define what a download task is and how it behaves.
 
 - [x] Adapter trait
 - [x] Engine capabilities
-- [x] Task mapping
-- [x] Progress mapping
+- [x] Task and progress mapping
 - [x] Pause/resume/remove mapping
-- [x] First engine integration (InMemory)
-- [x] Second engine integration (HTTP with redirect following)
-- [x] Integration tests with controlled fixtures
+- [x] InMemory engine
+- [x] HTTP engine with redirect following
+- [x] Controlled engine tests
 
 ### Phase 6 — Nexum Protocol
 
-- [x] Protocol envelope
+- [x] JSON-RPC 2.0 envelope
 - [x] Request/response model
-- [x] Task APIs (list, get, create, queue, start, pause, resume, remove)
-- [x] Transport-neutral event stream
-- [x] Error codes (JSON-RPC 2.0 standard + custom)
-- [x] Versioning (ProtocolVersion V1, server.version RPC)
-- [x] Authentication boundary (Credential, AuthenticationScheme, server.auth RPC)
-- [x] Compatibility tests (version negotiation, credential passthrough)
+- [x] Task APIs
+- [x] Transport-neutral event envelopes
+- [x] Error codes
+- [x] Protocol version negotiation
+- [x] Authentication boundary
+- [x] Compatibility tests
 
 ### Phase 7 — Server & CLI
 
-- [x] Server process (TCP listener, multi-threaded)
-- [x] Local server mode (default 127.0.0.1:39100)
-- [x] CLI task commands (list, get, create, queue, start, pause, resume, remove)
-- [x] CLI JSON-RPC client (TCP socket, line-based protocol)
-- [x] Remote connection (configured server, timeout handling)
-- [x] CLI task creation (id, source, destination via CLI args)
-- [x] CLI task control (all task operations)
-- [x] CLI status and logs (RPC error formatting, server auth/version)
-- [x] Configuration (CLI flags, config file parsing, server config)
+- [x] TCP server process
+- [x] Local server mode
+- [x] CLI JSON-RPC client
+- [x] Task creation and control
+- [x] Configured server connection
+- [x] Authentication and server inspection commands
+- [x] Server configuration
 
 ### Phase 8 — Desktop
 
-- [x] Tauri shell (Tauri 2.0, configurable window)
-- [x] React application (React 19, Vite)
-- [x] Task list (full CRUD, state display, progress)
-- [x] Task detail (expandable rows, byte formatting)
-- [x] Add-download flow (form, validation, create via RPC)
-- [x] Pause/resume/remove (connected to server)
-- [x] Settings (server configuration)
-- [x] Event-driven updates (RPC polling, error handling)
+- [x] Tauri 2 shell
+- [x] React application
+- [x] Task list and detail views
+- [x] Add-download flow
+- [x] Pause/resume/remove
+- [x] Server settings
+- [x] Event-driven/polling updates
 
 ### Phase 9 — Browser Integration
 
-- [x] Browser extension (Manifest v3)
-- [x] Context-menu integration ("Send to Nexum" on links)
-- [x] Link interception (hover detection, downloadable URLs)
-- [x] Send-to-Nexum flow (background service worker, notifications)
-- [x] Server/device selection (chrome.storage.local, popup config)
+- [x] Manifest V3 extension
+- [x] Context-menu integration
+- [x] Downloadable-link interception
+- [x] Send-to-Nexum flow
+- [x] Server/device selection
 
 ### Phase 10 — Extensibility
 
-- [x] Plugin manifest (id, name, version, description, author, license, entry)
-- [x] Permission model (None, Read, Write, Network, Execute)
-- [x] Capability API (name, version, features)
-- [x] Plugin SDK skeleton (PathPattern)
-- [ ] Plugin lifecycle (install/unload, version validation)
-- [ ] Resolver plugins (custom source type handlers)
-- [ ] Engine plugins (custom download engine adapters)
-
-### Phase 10 — Extensibility
-
-- [ ] Plugin manifest
-- [ ] Permission model
-- [ ] Capability API
-- [ ] Plugin SDK
+- [x] Plugin manifest
+- [x] Permission model
+- [x] Capability API
+- [x] Plugin SDK skeleton
+- [ ] Plugin lifecycle
 - [ ] Resolver plugins
 - [ ] Engine plugins
-- [ ] Plugin lifecycle
 
 ### Phase 11 — Media & Automation
 
-- [ ] Media probe
+- [x] Foundational media data structures
+- [ ] Media probing workflow
 - [ ] Manifest parsing
 - [ ] Track selection
 - [ ] Segment scheduling
 - [ ] Mux/post-processing
 - [ ] Automation API
 - [ ] AI/MCP integration
+- [ ] Remote device management
 
 ## 3. Delivery Order
 
-Foundation → Domain → Task State Machine → Task Service → Scheduler → Storage → Resolver → Engine Adapter → Protocol → Server/CLI → Desktop/Browser.
-
-Desktop development will begin only after the Core and Protocol have stable enough boundaries.
+Foundation → Domain → Task State Machine → Task Service → Scheduler → Storage → Resolver → Engine Adapter → Protocol → Server/CLI → Desktop/Browser → Extensibility → Media/Automation.
 
 ## 4. Engineering Rules
 
 ### Tests
 
-Core behavior must be testable without network access. Network and engine tests belong to integration-test layers.
+Core behavior must be testable without network access. Network and engine tests belong in controlled integration-test layers.
 
 ### Dependencies
 
@@ -205,11 +158,11 @@ Errors should preserve actionable context and should not be reduced to opaque st
 
 ### Observability
 
-Core operations should eventually emit structured events and structured logs rather than ad-hoc print statements.
+Core operations should emit structured events and should move toward structured logs rather than ad-hoc output.
 
 ### Compatibility
 
-Protocol, storage schema, and plugin APIs require explicit versioning strategies before becoming public.
+Protocol, storage schema, and plugin APIs require explicit versioning strategies before becoming stable public interfaces.
 
 ## 5. Git Workflow
 
@@ -220,6 +173,6 @@ Protocol, storage schema, and plugin APIs require explicit versioning strategies
 - Each milestone should be represented by reviewable commits.
 - Releases are tagged from known-good commits.
 
-## 6. Immediate Work
+## 6. Current Focus
 
-**Phase 2 — Scheduler is complete.** Phase 3 — Storage is implemented through the repository boundary, SQLite, schema versioning, migrations, task persistence, and initial restart recovery. Phase 4 — Resolver now provides source-specific validation and is integrated into Core task creation. Phase 5 — Engine Adapter has the adapter boundary, capabilities, task mapping, lifecycle mapping, and an initial HTTP engine. Phase 6 — Protocol now has JSON-RPC request/response primitives, task APIs, application error codes, notification handling, and a transport-neutral event buffer. Next: define the concrete event transport and compatibility/versioning boundaries.
+Phases 0–9 have working foundations in the repository. Phase 10 has the plugin manifest, permission, capability, and SDK foundations. The next architectural focus is the transport layer and plugin lifecycle, followed by the media and automation work described in Phase 11.
