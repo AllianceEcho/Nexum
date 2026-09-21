@@ -117,6 +117,7 @@ impl<R: TaskRepository> Core<R> {
         match result {
             Ok(engine_task) => {
                 self.engine_tasks.insert(task_id.clone(), (engine_name.to_owned(), engine_task));
+                self.sync_engine_task(&task_id)?;
                 self.persist_task(&task_id)?;
                 Ok(Some(task_id))
             }
@@ -128,9 +129,9 @@ impl<R: TaskRepository> Core<R> {
         }
     }
 
-    pub fn sync_engine_task(&mut self, id: &TaskId, engine_name: &str) -> Result<(), CoreError> {
-        let (_, engine_task) = self.engine_tasks.get(id).ok_or_else(|| EngineError::TaskNotFound(id.clone()))?.clone();
-        let snapshot = match self.engines.get(engine_name) {
+    pub fn sync_engine_task(&mut self, id: &TaskId) -> Result<(), CoreError> {
+        let (engine_name, engine_task) = self.engine_tasks.get(id).ok_or_else(|| EngineError::TaskNotFound(id.clone()))?.clone();
+        let snapshot = match self.engines.get(&engine_name) {
             Some(engine) => nexum_engine::EngineSnapshot::new(engine.state(&engine_task)?, engine.progress(&engine_task)?),
             None => return Err(EngineError::Failed(format!("engine not found: {engine_name}")).into()),
         };
