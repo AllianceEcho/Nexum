@@ -103,7 +103,7 @@ Scheduler Phase 2 已完成，下一阶段进入 Storage。存储层将通过 Re
 - [x] Task Mapping
 - [x] Progress Mapping
 - [x] Pause / Resume / Remove Mapping
-- [ ] 第一个真实引擎集成
+- [x] 第一个真实引擎集成
 - [ ] 可控测试环境下的集成测试
 
 ### Phase 6 — Nexum Protocol
@@ -209,4 +209,4 @@ Protocol、Storage Schema 和 Plugin API 在正式公开前都必须建立明确
 
 ## 6. 当前立即执行
 
-**Phase 2 — Scheduler 已完成。** **Phase 3 — Storage 已完成。** Repository、SQLite、Schema versioning、Migration、Task 持久化与初步重启恢复均已接入。**Phase 4 — Resolver 已完成基础实现，并已接入 Core 任务创建流程。Phase 5 — Engine Adapter 已启动，完成 Adapter 边界、Capabilities 与 Task Mapping。下一步继续把 Engine Adapter 生命周期接入 Core，并准备第一个真实 HTTP Engine 边界。**
+**Phase 2 — Scheduler 已完成。** **Phase 3 — Storage 已完成。** Repository、SQLite、Schema versioning、Migration、Task 持久化与初步重启恢复均已接入。**Phase 4 — Resolver 已完成基础实现，并已接入 Core 任务创建流程。Phase 5 — Engine Adapter 已启动，完成 Adapter 边界、Capabilities 与 Task Mapping。下一步加强 HTTP Engine 集成测试，并开始 Nexum Protocol 边界。**
