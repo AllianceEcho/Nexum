@@ -231,7 +231,6 @@ impl HttpEngine {
             .get(&task.handle)
             .ok_or_else(|| EngineError::TaskNotFound(task.task_id.clone()))
     }
-
 }
 
 impl EngineAdapter for HttpEngine {
