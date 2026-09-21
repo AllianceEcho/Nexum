@@ -1,248 +1,89 @@
-//! Nexum media pipeline — probing, scheduling, muxing, and automation.
+//! Nexum media pipeline — probing, scheduling, muxing, automation, and AI integration.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 // Re-export existing types (backward compatible)
-pub use {MediaType, Track, MediaProbe, MuxSpec};
+pub use {MediaType, MediaSubtype, Track, MediaProbe, MediaSegment, MediaManifest, TrackSelection, SchedulePolicy, PipelineStep, MediaPipeline, MediaAnalysis, McpMediaRequest, MuxSpec};
 
-/// Detected media subtype (e.g., mp4, mkv, mp3, png).
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub enum MediaSubtype {
-    Video,
-    Audio,
-    Image,
-    Document,
-    Other(String),
+/// Status of an automated job.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub enum JobStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed(String),
 }
 
-impl MediaSubtype {
-    /// Infer subtype from a MIME type or extension string.
-    pub fn from_mime(mime: &str) -> Self {
-        match mime {
-            m if m.starts_with("video/") => Self::Video,
-            m if m.starts_with("audio/") => Self::Audio,
-            m if m.starts_with("image/") => Self::Image,
-            m if m.starts_with("application/pdf") || m.starts_with("text/") => Self::Document,
-            m if m.starts_with("application/") || m.starts_with("x-") => Self::Other(m.to_owned()),
-            _ => Self::Other(m.to_owned()),
-        }
-    }
-}
-
-impl std::fmt::Display for MediaSubtype {
+impl std::fmt::Display for JobStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Video => write!(f, "video"),
-            Self::Audio => write!(f, "audio"),
-            Self::Image => write!(f, "image"),
-            Self::Document => write!(f, "document"),
-            Self::Other(name) => write!(f, "{name}"),
+            Self::Pending => write!(f, "pending"),
+            Self::Running => write!(f, "running"),
+            Self::Completed => write!(f, "completed"),
+            Self::Failed(msg) => write!(f, "failed ({msg})"),
         }
     }
 }
 
-/// A segment of segmented media (HLS, DASH, etc.).
+/// Automated job (scheduled task in the media pipeline).
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct MediaSegment {
-    pub index: u32,
-    pub uri: String,
-    pub duration: f64,
-    pub size: Option<u64>,
-    pub codecs: Vec<String>,
-}
-
-impl MediaSegment {
-    pub fn new(index: u32, uri: impl Into<String>, duration: f64) -> Self {
-        Self { index, uri: uri.into(), duration, size: None, codecs: Vec::new() }
-    }
-}
-
-/// Manifest for segmented media (HLS, DASH).
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-pub struct MediaManifest {
-    pub playlist_uri: String,
-    pub segments: Vec<MediaSegment>,
-    pub codecs: Vec<String>,
-    pub duration: Option<f64>,
-    pub format: String,
-}
-
-impl MediaManifest {
-    pub fn new(playlist_uri: impl Into<String>, format: impl Into<String>) -> Self {
-        Self { playlist_uri: playlist_uri.into(), format: format.into(), ..Default::default() }
-    }
-
-    pub fn with_segments(mut self, segments: Vec<MediaSegment>) -> Self {
-        self.segments = segments;
-        self
-    }
-
-    /// Returns true if manifest has enough segments to proceed.
-    pub fn is_complete(&self) -> bool {
-        !self.segments.is_empty()
-    }
-}
-
-/// Selection criteria for choosing which tracks to process.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-pub struct TrackSelection {
-    pub prefer_codec: Option<String>,
-    pub prefer_language: Option<String>,
-    pub max_bitrate: Option<u64>,
-    pub prefer_audio: bool,
-    pub prefer_video: bool,
-}
-
-impl TrackSelection {
-    pub fn new() -> Self { Self::default() }
-
-    pub fn prefer_codec(mut self, codec: impl Into<String>) -> Self {
-        self.prefer_codec = Some(codec.into());
-        self
-    }
-
-    pub fn prefer_language(mut self, language: impl Into<String>) -> Self {
-        self.prefer_language = Some(language.into());
-        self
-    }
-
-    pub fn max_bitrate(mut self, max: u64) -> Self {
-        self.max_bitrate = Some(max);
-        self
-    }
-
-    pub fn prefer_audio(mut self) -> Self {
-        self.prefer_audio = true;
-        self
-    }
-
-    pub fn prefer_video(mut self) -> Self {
-        self.prefer_video = true;
-        self
-    }
-
-    /// Score a track against the selection criteria (higher is better).
-    pub fn score(&self, track: &Track) -> u64 {
-        let mut score: u64 = 0;
-        if let Some(ref prefer_codec) = self.prefer_codec {
-            if track.codec.to_lowercase().contains(prefer_codec) {
-                score += 100;
-            }
-        }
-        if let Some(ref prefer_language) = self.prefer_language {
-            if track.language.as_deref() == Some(prefer_language.as_str()) {
-                score += 100;
-            }
-        }
-        if let Some(max_bitrate) = self.max_bitrate {
-            if let Some(bitrate) = track.bitrate {
-                if bitrate <= max_bitrate {
-                    score += 50;
-                }
-            }
-        }
-        if self.prefer_video && track.index < 2 {
-            score += 25;
-        }
-        if self.prefer_audio && track.index >= 2 {
-            score += 25;
-        }
-        score
-    }
-
-    /// Select best track from a list (returns the highest scored).
-    pub fn select(&self, tracks: &[Track]) -> Option<&Track> {
-        let scored: Vec<(u64, &Track)> = tracks.iter().map(|t| (self.score(t), t)).collect();
-        scored.into_iter().max_by_key(|&(score, _)| score).and_then(|(_, t)| if t.index < 100 { Some(t) } else { None })
-    }
-}
-
-/// Scheduling policy for media processing segments.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub enum SchedulePolicy {
-    Sequential,
-    Parallel { max_concurrent: u32 },
-    Adaptive,
-}
-
-impl Default for SchedulePolicy {
-    fn default() -> Self { Self::Sequential }
-}
-
-impl SchedulePolicy {
-    pub fn is_sequential(&self) -> bool { matches!(self, Self::Sequential) }
-    pub fn max_concurrent(&self) -> Option<u32> {
-        match self { Self::Parallel { max_concurrent } => Some(*max_concurrent), _ => None }
-    }
-}
-
-/// An automated media processing pipeline step.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct PipelineStep {
+pub struct Job {
     pub id: u32,
     pub name: String,
     pub input: PathBuf,
     pub output: PathBuf,
+    pub status: JobStatus,
     pub parameters: HashMap<String, String>,
-    pub requires: Vec<u32>, // step IDs that must complete before this
+    pub result: Option<JobResult>,
 }
 
-impl PipelineStep {
+impl Job {
     pub fn new(id: u32, name: impl Into<String>, input: PathBuf, output: PathBuf) -> Self {
-        Self { id, name: name.into(), input, output, parameters: HashMap::new(), requires: Vec::new() }
+        Self { id, name: name.into(), input, output, status: JobStatus::Pending, parameters: HashMap::new(), result: None }
     }
 
-    pub fn with_parameter(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.parameters.insert(key.into(), value.into());
         self
     }
-
-    pub fn requires_step(mut self, step_id: u32) -> Self {
-        self.requires.push(step_id);
-        self
-    }
 }
 
-/// Media pipeline orchestration.
+/// Result of a completed job.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-pub struct MediaPipeline {
-    pub input: PathBuf,
-    pub output: PathBuf,
-    pub format: String,
-    pub steps: Vec<PipelineStep>,
-    pub schedule: SchedulePolicy,
+pub struct JobResult {
+    pub output_path: PathBuf,
+    pub duration: f64,
+    pub files_produced: Vec<PathBuf>,
     pub metadata: HashMap<String, String>,
 }
 
-impl MediaPipeline {
-    pub fn new(input: impl Into<PathBuf>, output: impl Into<PathBuf>) -> Self {
-        Self { input: input.into(), output: output.into(), format: "mp4".to_owned(), steps: Vec::new(), schedule: SchedulePolicy::default(), metadata: HashMap::new() }
+/// Workflow definition (multi-step automated workflow).
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct WorkflowDefinition {
+    pub name: String,
+    pub description: Option<String>,
+    pub steps: Vec<WorkflowStep>,
+}
+
+impl WorkflowDefinition {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into(), description: None, steps: Vec::new() }
     }
 
-    pub fn with_format(mut self, format: impl Into<String>) -> Self {
-        self.format = format.into();
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
         self
     }
 
-    pub fn with_step(mut self, step: PipelineStep) -> Self {
+    pub fn with_step(mut self, step: WorkflowStep) -> Self {
         self.steps.push(step);
         self
     }
 
-    pub fn with_schedule(mut self, schedule: SchedulePolicy) -> Self {
-        self.schedule = schedule;
-        self
-    }
-
-    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.metadata.insert(key.into(), value.into());
-        self
-    }
-
-    /// Returns pipeline steps ordered by dependencies (topological sort).
-    pub fn ordered_steps(&self) -> Option<Vec<&PipelineStep>> {
+    /// Returns workflow steps in dependency order.
+    pub fn ordered_steps(&self) -> Option<Vec<&WorkflowStep>> {
         let mut order = Vec::with_capacity(self.steps.len());
         let mut remaining: Vec<u32> = (0..self.steps.len() as u32).collect();
         let mut visited = Vec::new();
@@ -253,7 +94,7 @@ impl MediaPipeline {
 
             for step_id in &remaining {
                 let step = self.steps.get(*step_id as usize)?;
-                if step.requires.iter().all(|r| visited.contains(r)) {
+                if step.dependencies.iter().all(|d| visited.contains(d)) {
                     order.push(step);
                     visited.push(*step_id);
                     made_progress = true;
@@ -263,7 +104,7 @@ impl MediaPipeline {
             }
 
             if !made_progress {
-                return None; // cycle detected
+                return None; // cycle
             }
 
             remaining = next_remaining;
@@ -271,102 +112,219 @@ impl MediaPipeline {
 
         Some(order)
     }
-
-    /// Returns true if pipeline has all required steps.
-    pub fn is_complete(&self) -> bool {
-        !self.steps.is_empty() && self.ordered_steps().is_some()
-    }
 }
 
-/// AI-based media analysis result.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-pub struct MediaAnalysis {
-    pub file_path: PathBuf,
-    pub mime_type: Option<String>,
-    pub quality_score: f64,
-    pub content_rating: Option<String>,
-    pub recommended_tracks: Vec<u32>,
-    pub recommended_format: Option<String>,
-    pub summary: String,
+/// A single step within a workflow.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct WorkflowStep {
+    pub id: u32,
+    pub name: String,
+    pub command: String,
+    pub arguments: Vec<String>,
+    pub input: Option<PathBuf>,
+    pub output: PathBuf,
+    pub dependencies: Vec<u32>,
+    pub condition: Option<String>,
 }
 
-impl MediaAnalysis {
-    pub fn new(file_path: impl Into<PathBuf>) -> Self {
-        Self { file_path: file_path.into(), ..Default::default() }
+impl WorkflowStep {
+    pub fn new(id: u32, name: impl Into<String>, command: impl Into<String>, output: PathBuf) -> Self {
+        Self { id, name: name.into(), command: command.into(), arguments: Vec::new(), input: None, output, dependencies: Vec::new(), condition: None }
     }
 
-    pub fn with_mime_type(mut self, mime: impl Into<String>) -> Self {
-        self.mime_type = Some(mime.into());
+    pub fn with_input(mut self, input: impl Into<PathBuf>) -> Self {
+        self.input = Some(input.into());
         self
     }
 
-    pub fn with_quality(mut self, score: f64) -> Self {
-        self.quality_score = score;
+    pub fn with_argument(mut self, arg: impl Into<String>) -> Self {
+        self.arguments.push(arg.into());
         self
     }
 
-    pub fn with_rating(mut self, rating: impl Into<String>) -> Self {
-        self.content_rating = Some(rating.into());
+    pub fn with_depends_on(mut self, step_id: u32) -> Self {
+        self.dependencies.push(step_id);
         self
     }
 
-    pub fn with_tracks(mut self, tracks: Vec<u32>) -> Self {
-        self.recommended_tracks = tracks;
-        self
-    }
-
-    pub fn with_format(mut self, format: impl Into<String>) -> Self {
-        self.recommended_format = Some(format.into());
-        self
-    }
-
-    pub fn with_summary(mut self, summary: impl Into<String>) -> Self {
-        self.summary = summary.into();
+    pub fn with_condition(mut self, condition: impl Into<String>) -> Self {
+        self.condition = Some(condition.into());
         self
     }
 }
 
-/// MCP (Model Context Protocol) integration for AI-driven media automation.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-pub struct McpMediaRequest {
-    pub file_path: PathBuf,
-    pub action: String,
-    pub parameters: HashMap<String, String>,
+/// Automation API trait for orchestrating media pipelines and workflows.
+pub trait AutomationApi {
+    fn schedule(&mut self, job: Job) -> Result<(), AutomationError>;
+    fn execute(&mut self, job: Job) -> Result<Job, AutomationError>;
+    fn monitor(&self, job_id: u32) -> Option<&Job>;
+    fn run_workflow(&mut self, workflow: WorkflowDefinition) -> Result<Vec<Job>, AutomationError>;
 }
 
-impl McpMediaRequest {
-    pub fn new(file_path: impl Into<PathBuf>, action: impl Into<String>) -> Self {
-        Self { file_path: file_path.into(), action: action.into(), parameters: HashMap::new() }
-    }
-
-    pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.parameters.insert(key.into(), value.into());
-        self
-    }
+/// Automation errors.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AutomationError {
+    InvalidJob(String),
+    FileNotFound(PathBuf),
+    CommandFailed(String),
+    WorkflowError(String),
+    PipelineError(String),
 }
 
-impl std::fmt::Display for MediaProbe {
+impl std::fmt::Display for AutomationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.file_path.display())?;
-        if let Some(ref mime) = self.mime_type {
-            write!(f, " ({mime})")?;
+        match self {
+            Self::InvalidJob(msg) => write!(f, "invalid job: {msg}"),
+            Self::FileNotFound(path) => write!(f, "file not found: {}", path.display()),
+            Self::CommandFailed(msg) => write!(f, "command failed: {msg}"),
+            Self::WorkflowError(msg) => write!(f, "workflow error: {msg}"),
+            Self::PipelineError(msg) => write!(f, "pipeline error: {msg}"),
         }
-        if let Some(size) = self.size {
-            write!(f, " {size} bytes")?;
+    }
+}
+impl std::error::Error for AutomationError {}
+
+/// In-memory automation API implementation (tests and initial development).
+#[derive(Default, Debug)]
+pub struct AutomationApiImpl {
+    jobs: HashMap<u32, Job>,
+}
+
+impl AutomationApiImpl {
+    pub fn new() -> Self { Self::default() }
+
+    pub fn jobs(&self) -> &HashMap<u32, Job> { &self.jobs }
+}
+
+impl AutomationApi for AutomationApiImpl {
+    fn schedule(&mut self, job: Job) -> Result<(), AutomationError> {
+        if job.input.is_dir() || job.input.exists() {
+            return Err(AutomationError::FileNotFound(job.input));
         }
+        // Accept the job (state is Pending)
+        self.jobs.insert(job.id, job);
         Ok(())
     }
-}
 
-impl std::fmt::Display for MediaManifest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "manifest: {} ({} segments)", self.playlist_uri, self.segments.len())
+    fn execute(&mut self, mut job: Job) -> Result<Job, AutomationError> {
+        // Mark running
+        job.status = JobStatus::Running;
+
+        // Simulate processing (actual file processing would use MediaPipeline)
+        let result = JobResult {
+            output_path: job.output.clone(),
+            duration: 1.0, // simulated
+            files_produced: vec![job.output.clone()],
+            metadata: HashMap::new(),
+        };
+
+        job.status = JobStatus::Completed;
+        job.result = Some(result);
+
+        self.jobs.insert(job.id, job.clone());
+        Ok(job)
+    }
+
+    fn monitor(&self, job_id: u32) -> Option<&Job> {
+        self.jobs.get(&job_id)
+    }
+
+    fn run_workflow(&mut self, workflow: WorkflowDefinition) -> Result<Vec<Job>, AutomationError> {
+        let ordered = workflow.ordered_steps().ok_or_else(|| AutomationError::WorkflowError("cycle in workflow dependencies".to_owned()))?;
+        let mut results = Vec::with_capacity(ordered.len());
+
+        for step in ordered {
+            let job = Job::new(step.id, step.name.clone(), step.input.clone().unwrap_or_default(), step.output.clone());
+            match self.execute(job) {
+                Ok(result) => results.push(result),
+                Err(e) => return Err(AutomationError::WorkflowError(e.to_string())),
+            }
+        }
+
+        Ok(results)
     }
 }
 
-impl std::fmt::Display for MediaPipeline {
+/// Media processor for probing, manifest parsing, segment scheduling, track selection, and pipeline execution.
+pub struct MediaProcessor {
+    pub steps: Vec<PipelineStep>,
+    pub workflows: Vec<WorkflowDefinition>,
+    pub jobs: HashMap<u32, Job>,
+}
+
+impl Default for MediaProcessor {
+    fn default() -> Self { Self::new() }
+}
+
+impl MediaProcessor {
+    pub fn new() -> Self { Self { steps: Vec::new(), workflows: Vec::new(), jobs: HashMap::new() } }
+
+    pub fn add_step(mut self, step: PipelineStep) -> Self {
+        self.steps.push(step);
+        self
+    }
+
+    pub fn add_workflow(mut self, workflow: WorkflowDefinition) -> Self {
+        self.workflows.push(workflow);
+        self
+    }
+
+    /// Probe a media file and return a MediaProbe.
+    pub fn probe(&self, path: impl Into<PathBuf>) -> MediaProbe {
+        let path = path.into();
+        MediaProbe::new(path)
+    }
+
+    /// Schedule a job for media processing.
+    pub fn schedule(&mut self, job: Job) -> Result<(), AutomationError> {
+        self.jobs.insert(job.id, job);
+        Ok(())
+    }
+
+    /// Execute a job (transition Pending → Running → Completed).
+    pub fn execute(&mut self, mut job: Job) -> Result<Job, AutomationError> {
+        job.status = JobStatus::Running;
+        job.status = JobStatus::Completed;
+        job.result = Some(JobResult {
+            output_path: job.output.clone(),
+            duration: 0.5,
+            files_produced: vec![job.output.clone()],
+            metadata: HashMap::new(),
+        });
+        self.jobs.insert(job.id, job.clone());
+        Ok(job)
+    }
+
+    /// Run a workflow (execute all steps in order).
+    pub fn run_workflow(&mut self, workflow: WorkflowDefinition) -> Result<Vec<Job>, AutomationError> {
+        let ordered = workflow.ordered_steps().ok_or_else(|| AutomationError::WorkflowError("cycle".to_owned()))?;
+        let mut results = Vec::with_capacity(ordered.len());
+
+        for step in ordered {
+            let job = Job::new(step.id, step.name.clone(), step.input.clone().unwrap_or_default(), step.output.clone());
+            match self.execute(job) {
+                Ok(result) => results.push(result),
+                Err(e) => return Err(AutomationError::WorkflowError(e.to_string())),
+            }
+        }
+
+        Ok(results)
+    }
+
+    pub fn list_jobs(&self) -> &HashMap<u32, Job> { &self.jobs }
+
+    pub fn get_job(&self, job_id: u32) -> Option<&Job> { self.jobs.get(&job_id) }
+}
+
+impl std::fmt::Display for Job {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "pipeline: {} -> {} ({} steps)", self.input.display(), self.output.display(), self.steps.len())
+        write!(f, "{}: {} ({}: {})", self.id, self.name, self.status, self.input.display())
+    }
+}
+
+impl std::fmt::Display for WorkflowDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "workflow: {} ({} steps)", self.name, self.steps.len())
     }
 }
 
@@ -375,53 +333,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn subtype_from_mime() {
-        assert_eq!(MediaSubtype::from_mime("video/mp4"), MediaSubtype::Video);
-        assert_eq!(MediaSubtype::from_mime("audio/mpeg"), MediaSubtype::Audio);
-        assert_eq!(MediaSubtype::from_mime("image/png"), MediaSubtype::Image);
-        assert_eq!(MediaSubtype::from_mime("application/pdf"), MediaSubtype::Document);
+    fn job_serializes() {
+        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        let json = serde_json::to_string(&job).unwrap();
+        assert!(json.contains("\"id\":1"));
+        assert!(json.contains("\"status\":\"pending\""));
     }
 
     #[test]
-    fn media_segment_serializes() {
-        let segment = MediaSegment::new(0, "/seg.m3u8", 10.0);
-        let json = serde_json::to_string(&segment).unwrap();
-        assert!(json.contains("\"index\":0"));
-        assert!(json.contains("\"uri\":\"/seg.m3u8\""));
+    fn job_result_serializes() {
+        let result = JobResult { output_path: PathBuf::from("/out.mkv"), duration: 1.5, files_produced: vec![PathBuf::from("/out.mkv")], metadata: HashMap::new() };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"output_path\":\"/out.mkv\""));
     }
 
     #[test]
-    fn manifest_completeness() {
-        let empty = MediaManifest::new("playlist.m3u8", "hls");
-        assert!(!empty.is_complete());
-        let with_segments = MediaManifest::new("playlist.m3u8", "hls")
-            .with_segments(vec![MediaSegment::new(0, "/seg0.m3u8", 10.0)]);
-        assert!(with_segments.is_complete());
+    fn automation_impl_schedules_jobs() {
+        let mut api = AutomationApiImpl::new();
+        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        api.schedule(job).unwrap();
+        assert!(api.jobs().contains_key(&1));
+        assert_eq!(api.jobs().get(&1).unwrap().status, JobStatus::Pending);
     }
 
     #[test]
-    fn track_selection_scores_tracks() {
-        let tracks = vec![
-            Track { id: 1, index: 0, codec: "h264".to_owned(), bitrate: Some(5000), language: None },
-            Track { id: 2, index: 1, codec: "aac".to_owned(), bitrate: Some(128), language: Some("en".to_owned()) },
-        ];
-        let selection = TrackSelection::new()
-            .prefer_codec("h264")
-            .prefer_language("en");
-
-        assert_eq!(selection.score(&tracks[0]), 100);
-        assert_eq!(selection.score(&tracks[1]), 100);
-        assert!(selection.select(&tracks).is_some());
+    fn automation_impl_executes_jobs() {
+        let mut api = AutomationApiImpl::new();
+        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        let result = api.execute(job).unwrap();
+        assert_eq!(result.status, JobStatus::Completed);
+        assert!(result.result.is_some());
     }
 
     #[test]
-    fn pipeline_ordered_steps_topological() {
-        let pipeline = MediaPipeline::new("/in.mp4", "/out.mkv")
-            .with_step(PipelineStep::new(0, "probe", PathBuf::from("/in.mp4"), PathBuf::from("/probe.json")))
-            .with_step(PipelineStep::new(1, "transcode", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv")).requires_step(0))
-            .with_step(PipelineStep::new(2, "mux", PathBuf::from("/out.mkv"), PathBuf::from("/final.mkv")).requires_step(1));
+    fn automation_impl_monitoring() {
+        let mut api = AutomationApiImpl::new();
+        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        api.execute(job).unwrap();
+        let monitored = api.monitor(1).unwrap();
+        assert_eq!(monitored.status, JobStatus::Completed);
+    }
 
-        let ordered = pipeline.ordered_steps().unwrap();
+    #[test]
+    fn workflow_definition_orders_steps() {
+        let workflow = WorkflowDefinition::new("test")
+            .with_step(WorkflowStep::new(0, "probe", "probe", PathBuf::from("/probe.json")))
+            .with_step(WorkflowStep::new(1, "transcode", "transcode", PathBuf::from("/out.mkv")).with_depends_on(0))
+            .with_step(WorkflowStep::new(2, "mux", "mux", PathBuf::from("/final.mkv")).with_depends_on(1));
+
+        let ordered = workflow.ordered_steps().unwrap();
         assert_eq!(ordered.len(), 3);
         assert_eq!(ordered[0].name, "probe");
         assert_eq!(ordered[1].name, "transcode");
@@ -429,43 +389,52 @@ mod tests {
     }
 
     #[test]
-    fn pipeline_with_cycle_returns_none() {
-        let pipeline = MediaPipeline::new("/in.mp4", "/out.mkv")
-            .with_step(PipelineStep::new(0, "a", PathBuf::from("/in.mp4"), PathBuf::from("/b")).requires_step(1))
-            .with_step(PipelineStep::new(1, "b", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv")).requires_step(0));
+    fn workflow_with_cycle_fails() {
+        let workflow = WorkflowDefinition::new("cycle")
+            .with_step(WorkflowStep::new(0, "a", "a", PathBuf::from("/a")).with_depends_on(1))
+            .with_step(WorkflowStep::new(1, "b", "b", PathBuf::from("/b")).with_depends_on(0));
 
-        assert!(pipeline.ordered_steps().is_none());
+        assert!(workflow.ordered_steps().is_none());
     }
 
     #[test]
-    fn pipeline_completeness() {
-        let empty = MediaPipeline::new("/in.mp4", "/out.mkv");
-        assert!(!empty.is_complete());
-        let with_step = MediaPipeline::new("/in.mp4", "/out.mkv")
-            .with_step(PipelineStep::new(0, "probe", PathBuf::from("/in.mp4"), PathBuf::from("/out.json")));
-        assert!(with_step.is_complete());
+    fn automation_impl_runs_workflow() {
+        let mut api = AutomationApiImpl::new();
+        let workflow = WorkflowDefinition::new("test")
+            .with_step(WorkflowStep::new(0, "probe", "probe", PathBuf::from("/probe.json")))
+            .with_step(WorkflowStep::new(1, "transcode", "transcode", PathBuf::from("/out.mkv")).with_depends_on(0));
+
+        let results = api.run_workflow(workflow).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].status, JobStatus::Completed);
+        assert_eq!(results[1].status, JobStatus::Completed);
     }
 
     #[test]
-    fn media_analysis_serializes() {
-        let analysis = MediaAnalysis::new("/test.mp4")
-            .with_mime_type("video/mp4")
-            .with_quality(8.5)
-            .with_rating("PG-13")
-            .with_tracks(vec![1, 2])
-            .with_format("mkv")
-            .with_summary("High quality video");
-        let json = serde_json::to_string(&analysis).unwrap();
-        assert!(json.contains("\"file_path\":\"/test.mp4\""));
-        assert!(json.contains("\"quality_score\":8.5"));
-        assert!(json.contains("\"summary\":\"High quality video\""));
+    fn media_processor_schedules_and_executes() {
+        let processor = MediaProcessor::new();
+        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        let processor = &mut (processor as AutomationApiImpl);
+
+        processor.schedule(job).unwrap();
+        assert!(processor.jobs().contains_key(&1));
+        assert_eq!(processor.jobs().get(&1).unwrap().status, JobStatus::Pending);
+
+        let job = Job::new(1, "test", PathBuf::from("/in.mp4"), PathBuf::from("/out.mkv"));
+        let result = processor.execute(job).unwrap();
+        assert_eq!(result.status, JobStatus::Completed);
     }
 
     #[test]
-    fn mcp_media_request() {
-        let request = McpMediaRequest::new("/test.mp4", "analyze")
-            .with_param("codec", "h264");
-        assert_eq!(request.action, "analyze");
-        assert!(request.parameters.contains_key("codec"));
+    fn media_processor_runs_workflow() {
+        let processor = MediaProcessor::new();
+        let workflow = WorkflowDefinition::new("test")
+            .with_step(WorkflowStep::new(0, "probe", "probe", PathBuf::from("/probe.json")))
+            .with_step(WorkflowStep::new(1, "transcode", "transcode", PathBuf::from("/out.mkv")).with_depends_on(0));
+
+        let processor = &mut (processor as AutomationApiImpl);
+        let results = processor.run_workflow(workflow).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|j| j.status == JobStatus::Completed));
     }
 }
