@@ -320,7 +320,7 @@ impl EngineRegistry {
     }
 
     pub fn get_mut(&mut self, name: &str) -> Option<&mut (dyn EngineAdapter + '_)> {
-        self.engines.iter_mut().find(|engine| engine.name() == name).map(|engine| engine.as_mut())
+        self.engines.iter_mut().find(|engine| engine.name() == name).map(move |engine| engine.as_mut())
     }
 
     pub fn names(&self) -> Vec<&str> {
