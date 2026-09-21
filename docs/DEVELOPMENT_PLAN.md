@@ -81,7 +81,7 @@ Goal: define what a download task is and how it behaves.
 - [ ] SQLite implementation
 - [ ] Schema versioning
 - [ ] Migration mechanism
-- [ ] Task persistence
+- [x] Task persistence
 - [ ] Recovery after restart
 
 ### Phase 4 — Resolver
