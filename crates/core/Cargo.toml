@@ -10,3 +10,4 @@ nexum-domain = { path = "../domain" }
 nexum-task = { path = "../task" }
 nexum-scheduler = { path = "../scheduler" }
 nexum-storage = { path = "../storage" }
+nexum-resolver = { path = "../resolver" }
