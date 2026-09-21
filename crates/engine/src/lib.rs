@@ -322,6 +322,14 @@ mod tests {
     }
 
     #[test]
+    fn http_engine_rejects_invalid_endpoint_without_creating_task() {
+        let mut engine = HttpEngine::new();
+        let id = TaskId::from("http-task");
+        let result = engine.start(&id, "http://127.0.0.1:1/not-found", "/tmp/file");
+        assert!(matches!(result, Err(EngineError::Failed(_))));
+    }
+
+    #[test]
     fn adapter_exposes_capabilities_and_task_mapping() {
         let mut engine = FakeEngine;
         assert_eq!(engine.name(), "fake");
