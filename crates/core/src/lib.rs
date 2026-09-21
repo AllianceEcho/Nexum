@@ -1,18 +1,18 @@
 //! Nexum Core orchestration layer.
 
 pub use nexum_domain;
+pub use nexum_engine;
+pub use nexum_resolver;
 pub use nexum_scheduler;
 pub use nexum_storage;
 pub use nexum_task;
-pub use nexum_resolver;
-pub use nexum_engine;
 
 use nexum_domain::{Destination, DownloadSource, TaskId};
+use nexum_engine::{EngineError, EngineRegistry, EngineTask};
+use nexum_resolver::{ResolveRequest, ResolveResult, ResolverError, ResolverRegistry};
 use nexum_scheduler::{Priority, Scheduler, SchedulerConfig, SchedulerError, SchedulerEvent};
 use nexum_storage::{InMemoryRepository, StorageError, StoredTask, TaskRepository};
-use nexum_resolver::{ResolveRequest, ResolveResult, ResolverError, ResolverRegistry};
 use nexum_task::{DownloadTask, TaskService, TaskServiceError, TaskState};
-use nexum_engine::{EngineError, EngineRegistry, EngineTask};
 use std::collections::HashMap;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -25,19 +25,29 @@ pub enum CoreError {
 }
 
 impl From<SchedulerError> for CoreError {
-    fn from(value: SchedulerError) -> Self { Self::Scheduler(value) }
+    fn from(value: SchedulerError) -> Self {
+        Self::Scheduler(value)
+    }
 }
 impl From<TaskServiceError> for CoreError {
-    fn from(value: TaskServiceError) -> Self { Self::Task(value) }
+    fn from(value: TaskServiceError) -> Self {
+        Self::Task(value)
+    }
 }
 impl From<StorageError> for CoreError {
-    fn from(value: StorageError) -> Self { Self::Storage(value) }
+    fn from(value: StorageError) -> Self {
+        Self::Storage(value)
+    }
 }
 impl From<ResolverError> for CoreError {
-    fn from(value: ResolverError) -> Self { Self::Resolver(value) }
+    fn from(value: ResolverError) -> Self {
+        Self::Resolver(value)
+    }
 }
 impl From<EngineError> for CoreError {
-    fn from(value: EngineError) -> Self { Self::Engine(value) }
+    fn from(value: EngineError) -> Self {
+        Self::Engine(value)
+    }
 }
 
 /// Core orchestration with an injectable task repository.
@@ -93,11 +103,7 @@ impl<R: TaskRepository> Core<R> {
         Ok(task)
     }
 
-    pub fn queue_task(
-        &mut self,
-        id: &TaskId,
-        priority: Priority,
-    ) -> Result<(), CoreError> {
+    pub fn queue_task(&mut self, id: &TaskId, priority: Priority) -> Result<(), CoreError> {
         self.scheduler.enqueue(&mut self.tasks, id, priority)?;
         self.persist_task(id)
     }
@@ -106,23 +112,36 @@ impl<R: TaskRepository> Core<R> {
         self.start_next_with_engine("in-memory")
     }
 
-    pub fn start_next_with_engine(&mut self, engine_name: &str) -> Result<Option<TaskId>, CoreError> {
+    pub fn start_next_with_engine(
+        &mut self,
+        engine_name: &str,
+    ) -> Result<Option<TaskId>, CoreError> {
         let id = self.scheduler.start_next(&mut self.tasks)?;
-        let Some(task_id) = id else { return Ok(None); };
-        let task = self.tasks.get(&task_id).cloned().ok_or_else(|| TaskServiceError::NotFound(task_id.clone()))?;
+        let Some(task_id) = id else {
+            return Ok(None);
+        };
+        let task = self
+            .tasks
+            .get(&task_id)
+            .cloned()
+            .ok_or_else(|| TaskServiceError::NotFound(task_id.clone()))?;
         let result = match self.engines.get_mut(engine_name) {
             Some(engine) => engine.start(&task.id, task.source.as_str(), task.destination.as_str()),
-            None => Err(EngineError::Failed(format!("engine not found: {engine_name}"))),
+            None => Err(EngineError::Failed(format!(
+                "engine not found: {engine_name}"
+            ))),
         };
         match result {
             Ok(engine_task) => {
-                self.engine_tasks.insert(task_id.clone(), (engine_name.to_owned(), engine_task));
+                self.engine_tasks
+                    .insert(task_id.clone(), (engine_name.to_owned(), engine_task));
                 self.sync_engine_task(&task_id)?;
                 self.persist_task(&task_id)?;
                 Ok(Some(task_id))
             }
             Err(error) => {
-                self.scheduler.mark_finished(&mut self.tasks, &task_id, TaskState::Failed)?;
+                self.scheduler
+                    .mark_finished(&mut self.tasks, &task_id, TaskState::Failed)?;
                 self.persist_task(&task_id)?;
                 Err(CoreError::Engine(error))
             }
@@ -130,10 +149,19 @@ impl<R: TaskRepository> Core<R> {
     }
 
     pub fn sync_engine_task(&mut self, id: &TaskId) -> Result<(), CoreError> {
-        let (engine_name, engine_task) = self.engine_tasks.get(id).ok_or_else(|| EngineError::TaskNotFound(id.clone()))?.clone();
+        let (engine_name, engine_task) = self
+            .engine_tasks
+            .get(id)
+            .ok_or_else(|| EngineError::TaskNotFound(id.clone()))?
+            .clone();
         let snapshot = match self.engines.get(&engine_name) {
-            Some(engine) => nexum_engine::EngineSnapshot::new(engine.state(&engine_task)?, engine.progress(&engine_task)?),
-            None => return Err(EngineError::Failed(format!("engine not found: {engine_name}")).into()),
+            Some(engine) => nexum_engine::EngineSnapshot::new(
+                engine.state(&engine_task)?,
+                engine.progress(&engine_task)?,
+            ),
+            None => {
+                return Err(EngineError::Failed(format!("engine not found: {engine_name}")).into());
+            }
         };
         let (state, progress) = nexum_engine::map_engine_snapshot(&snapshot);
         self.tasks.update_progress(id, progress)?;
@@ -145,7 +173,10 @@ impl<R: TaskRepository> Core<R> {
 
     pub fn pause_task(&mut self, id: &TaskId) -> Result<(), CoreError> {
         if let Some((engine_name, engine_task)) = self.engine_tasks.get(id).cloned() {
-            self.engines.get_mut(&engine_name).ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?.pause(&engine_task)?;
+            self.engines
+                .get_mut(&engine_name)
+                .ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?
+                .pause(&engine_task)?;
         }
         self.scheduler.pause(&mut self.tasks, id)?;
         self.persist_task(id)
@@ -153,7 +184,10 @@ impl<R: TaskRepository> Core<R> {
 
     pub fn resume_task(&mut self, id: &TaskId) -> Result<bool, CoreError> {
         if let Some((engine_name, engine_task)) = self.engine_tasks.get(id).cloned() {
-            self.engines.get_mut(&engine_name).ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?.resume(&engine_task)?;
+            self.engines
+                .get_mut(&engine_name)
+                .ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?
+                .resume(&engine_task)?;
         }
         let resumed = self.scheduler.resume(&mut self.tasks, id)?;
         if resumed {
@@ -178,7 +212,10 @@ impl<R: TaskRepository> Core<R> {
 
     pub fn remove_task(&mut self, id: &TaskId) -> Result<DownloadTask, CoreError> {
         if let Some((engine_name, engine_task)) = self.engine_tasks.remove(id) {
-            self.engines.get_mut(&engine_name).ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?.remove(&engine_task)?;
+            self.engines
+                .get_mut(&engine_name)
+                .ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?
+                .remove(&engine_task)?;
         }
         let task = self.tasks.remove(id)?;
         self.repository.remove(id)?;
@@ -186,7 +223,9 @@ impl<R: TaskRepository> Core<R> {
     }
 
     pub fn persist_task(&mut self, id: &TaskId) -> Result<(), CoreError> {
-        let task = self.tasks.get(id)
+        let task = self
+            .tasks
+            .get(id)
             .ok_or_else(|| StorageError::NotFound(id.clone()))?
             .clone();
         self.repository.update(StoredTask::from(task))?;
@@ -239,7 +278,6 @@ impl<R: TaskRepository> Core<R> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,11 +285,17 @@ mod tests {
     use nexum_storage::SqliteRepository;
 
     fn config() -> SchedulerConfig {
-        SchedulerConfig { max_concurrent_tasks: 2, ..SchedulerConfig::default() }
+        SchedulerConfig {
+            max_concurrent_tasks: 2,
+            ..SchedulerConfig::default()
+        }
     }
 
     fn task_source() -> (DownloadSource, Destination) {
-        (DownloadSource::new("https://example.com/file"), Destination::new("/tmp/file"))
+        (
+            DownloadSource::new("https://example.com/file"),
+            Destination::new("/tmp/file"),
+        )
     }
 
     #[test]
@@ -264,7 +308,8 @@ mod tests {
         let id = TaskId::from("task-1");
         core.create_task(id.clone(), source, destination).unwrap();
         core.queue_task(&id, Priority::HIGH).unwrap();
-        core.update_progress(&id, Progress::new(128, Some(1024))).unwrap();
+        core.update_progress(&id, Progress::new(128, Some(1024)))
+            .unwrap();
 
         let stored = core.repository.get(&id).unwrap().unwrap();
         assert_eq!(stored.state, TaskState::Queued);
@@ -274,12 +319,17 @@ mod tests {
     #[test]
     fn rejects_task_creation_with_unsupported_source() {
         let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
-        let error = core.create_task(
-            "invalid-source",
-            DownloadSource::new("ftp://example.com/file"),
-            Destination::new("/tmp/file"),
-        ).unwrap_err();
-        assert!(matches!(error, CoreError::Resolver(nexum_resolver::ResolverError::UnsupportedScheme(_))));
+        let error = core
+            .create_task(
+                "invalid-source",
+                DownloadSource::new("ftp://example.com/file"),
+                Destination::new("/tmp/file"),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            CoreError::Resolver(nexum_resolver::ResolverError::UnsupportedScheme(_))
+        ));
         assert!(core.tasks.get(&TaskId::from("invalid-source")).is_none());
     }
 
@@ -300,13 +350,15 @@ mod tests {
 
     #[test]
     fn sqlite_repository_can_be_injected_into_core() {
-        let mut core = Core::with_repository(config(), SqliteRepository::open_in_memory().unwrap()).unwrap();
+        let mut core =
+            Core::with_repository(config(), SqliteRepository::open_in_memory().unwrap()).unwrap();
         let (source, destination) = task_source();
         let id = TaskId::from("sqlite-task");
         core.create_task(id.clone(), source, destination).unwrap();
         core.queue_task(&id, Priority::NORMAL).unwrap();
         core.start_next().unwrap();
-        core.update_progress(&id, Progress::new(64, Some(100))).unwrap();
+        core.update_progress(&id, Progress::new(64, Some(100)))
+            .unwrap();
 
         let stored = core.repository.get(&id).unwrap().unwrap();
         assert_eq!(stored.state, TaskState::Downloading);
@@ -320,7 +372,9 @@ mod tests {
         let id = TaskId::from("lifecycle-task");
 
         // Create
-        let task = core.create_task(id.clone(), source.clone(), destination.clone()).unwrap();
+        let task = core
+            .create_task(id.clone(), source.clone(), destination.clone())
+            .unwrap();
         assert_eq!(task.state, TaskState::Created);
 
         // Queue
@@ -333,7 +387,8 @@ mod tests {
         assert_eq!(core.tasks.get(&id).unwrap().state, TaskState::Downloading);
 
         // Update progress
-        core.update_progress(&id, Progress::new(512, Some(1024))).unwrap();
+        core.update_progress(&id, Progress::new(512, Some(1024)))
+            .unwrap();
         let stored = core.repository.get(&id).unwrap().unwrap();
         assert_eq!(stored.progress.downloaded_bytes, 512);
         assert_eq!(stored.progress.total_bytes, Some(1024));
@@ -360,8 +415,10 @@ mod tests {
         let id2 = TaskId::from("concurrent-2");
         let id3 = TaskId::from("concurrent-3");
 
-        core.create_task(id1.clone(), source.clone(), destination.clone()).unwrap();
-        core.create_task(id2.clone(), source.clone(), destination.clone()).unwrap();
+        core.create_task(id1.clone(), source.clone(), destination.clone())
+            .unwrap();
+        core.create_task(id2.clone(), source.clone(), destination.clone())
+            .unwrap();
         core.create_task(id3.clone(), source, destination).unwrap();
 
         core.queue_task(&id1, Priority::NORMAL).unwrap();
@@ -397,7 +454,12 @@ mod tests {
 
         let events = core.drain_task_events();
         assert!(!events.is_empty());
-        assert_eq!(events[0], nexum_task::TaskEvent::Created { task_id: id.clone() });
+        assert_eq!(
+            events[0],
+            nexum_task::TaskEvent::Created {
+                task_id: id.clone()
+            }
+        );
 
         // After draining, events should be empty
         assert!(core.drain_task_events().is_empty());
@@ -413,16 +475,21 @@ mod tests {
 
         let events = core.drain_scheduler_events();
         assert!(!events.is_empty());
-        assert!(matches!(&events[0], nexum_core::nexum_scheduler::SchedulerEvent::Enqueued { .. }));
+        assert!(matches!(
+            &events[0],
+            nexum_core::nexum_scheduler::SchedulerEvent::Enqueued { .. }
+        ));
     }
 
     #[test]
     fn core_persists_and_recovers_full_lifecycle() {
-        let mut core = Core::with_repository(config(), SqliteRepository::open_in_memory().unwrap()).unwrap();
+        let mut core =
+            Core::with_repository(config(), SqliteRepository::open_in_memory().unwrap()).unwrap();
         let (source, destination) = task_source();
         let id = TaskId::from("persist-recover");
 
-        core.create_task(id.clone(), source.clone(), destination.clone()).unwrap();
+        core.create_task(id.clone(), source.clone(), destination.clone())
+            .unwrap();
         core.queue_task(&id, Priority::NORMAL).unwrap();
 
         // Save repository and create fresh core
