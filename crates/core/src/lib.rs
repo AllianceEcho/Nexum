@@ -69,6 +69,7 @@ impl<R: TaskRepository> Core<R> {
             engines: {
                 let mut registry = EngineRegistry::new();
                 registry.register(Box::new(nexum_engine::InMemoryEngine::new()));
+                registry.register(Box::new(nexum_engine::HttpEngine::new()));
                 registry
             },
             engine_tasks: HashMap::new(),
