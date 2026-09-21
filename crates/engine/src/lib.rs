@@ -209,7 +209,7 @@ impl Default for HttpEngine {
     fn default() -> Self {
         Self {
             client: reqwest::blocking::Client::builder()
-                .redirect(|_| Some(5))
+                .redirect(reqwest::redirect::Policy::limited(5))
                 .build()
                 .expect("failed to build http client"),
             tasks: std::collections::HashMap::new(),
@@ -424,14 +424,7 @@ impl EngineRegistry {
             .find(|engine| engine.name() == name)
             .map(|engine| engine.start(task_id, source, destination))
             .ok_or_else(|| EngineError::Failed(format!("engine not found: {name}")))
-            .transpose()
-            .unwrap_or_else(|e| {
-                if e == EngineError::TaskAlreadyStarted {
-                    Err(EngineError::TaskAlreadyStarted)
-                } else {
-                    Err(e)
-                }
-            })
+            .unwrap_or_else(|e| e)
     }
 
     pub fn pause_engine(&mut self, name: &str, task: &EngineTask) -> Result<(), EngineError> {
