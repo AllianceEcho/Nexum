@@ -47,7 +47,7 @@ pub struct Core<R: TaskRepository = InMemoryRepository> {
     pub repository: R,
     pub resolver: ResolverRegistry,
     pub engines: EngineRegistry,
-    pub engine_tasks: HashMap<TaskId, EngineTask>,
+    pub engine_tasks: HashMap<TaskId, (String, EngineTask)>,
 }
 
 impl Core<InMemoryRepository> {
@@ -115,7 +115,7 @@ impl<R: TaskRepository> Core<R> {
         };
         match result {
             Ok(engine_task) => {
-                self.engine_tasks.insert(task_id.clone(), engine_task);
+                self.engine_tasks.insert(task_id.clone(), (engine_name.to_owned(), engine_task));
                 self.persist_task(&task_id)?;
                 Ok(Some(task_id))
             }
@@ -128,7 +128,7 @@ impl<R: TaskRepository> Core<R> {
     }
 
     pub fn sync_engine_task(&mut self, id: &TaskId, engine_name: &str) -> Result<(), CoreError> {
-        let engine_task = self.engine_tasks.get(id).ok_or_else(|| EngineError::TaskNotFound(id.clone()))?.clone();
+        let (_, engine_task) = self.engine_tasks.get(id).ok_or_else(|| EngineError::TaskNotFound(id.clone()))?.clone();
         let snapshot = match self.engines.get(engine_name) {
             Some(engine) => nexum_engine::EngineSnapshot::new(engine.state(&engine_task)?, engine.progress(&engine_task)?),
             None => return Err(EngineError::Failed(format!("engine not found: {engine_name}")).into()),
@@ -142,16 +142,16 @@ impl<R: TaskRepository> Core<R> {
     }
 
     pub fn pause_task(&mut self, id: &TaskId) -> Result<(), CoreError> {
-        if let Some(engine_task) = self.engine_tasks.get(id).cloned() {
-            self.engines.get_mut("in-memory").ok_or_else(|| EngineError::Failed("engine not found: in-memory".into()))?.pause(&engine_task)?;
+        if let Some((engine_name, engine_task)) = self.engine_tasks.get(id).cloned() {
+            self.engines.get_mut(&engine_name).ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?.pause(&engine_task)?;
         }
         self.scheduler.pause(&mut self.tasks, id)?;
         self.persist_task(id)
     }
 
     pub fn resume_task(&mut self, id: &TaskId) -> Result<bool, CoreError> {
-        if let Some(engine_task) = self.engine_tasks.get(id).cloned() {
-            self.engines.get_mut("in-memory").ok_or_else(|| EngineError::Failed("engine not found: in-memory".into()))?.resume(&engine_task)?;
+        if let Some((engine_name, engine_task)) = self.engine_tasks.get(id).cloned() {
+            self.engines.get_mut(&engine_name).ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?.resume(&engine_task)?;
         }
         let resumed = self.scheduler.resume(&mut self.tasks, id)?;
         if resumed {
@@ -175,8 +175,8 @@ impl<R: TaskRepository> Core<R> {
     }
 
     pub fn remove_task(&mut self, id: &TaskId) -> Result<DownloadTask, CoreError> {
-        if let Some(engine_task) = self.engine_tasks.remove(id) {
-            self.engines.get_mut("in-memory").ok_or_else(|| EngineError::Failed("engine not found: in-memory".into()))?.remove(&engine_task)?;
+        if let Some((engine_name, engine_task)) = self.engine_tasks.remove(id) {
+            self.engines.get_mut(&engine_name).ok_or_else(|| EngineError::Failed(format!("engine not found: {engine_name}")))?.remove(&engine_task)?;
         }
         let task = self.tasks.remove(id)?;
         self.repository.remove(id)?;
