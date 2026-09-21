@@ -80,9 +80,9 @@ pub fn call_rpc(server: &str, method: &str, params: Option<Value>, timeout_ms: u
     let reader = BufReader::new(stream);
     let mut line = String::new();
     match reader.lines().next() {
-        Ok(Ok(l)) => line = l,
-        Ok(Err(e)) => return RpcResult::err(format!("read: {e}")),
-        Err(e) => return RpcResult::err(format!("lines: {e}")),
+        Some(Ok(l)) => line = l,
+        Some(Err(e)) => return RpcResult::err(format!("read: {e}")),
+        None => return RpcResult::err("no response".to_owned()),
     }
 
     // Parse response
