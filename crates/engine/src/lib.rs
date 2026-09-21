@@ -48,7 +48,7 @@ impl fmt::Display for EngineError {
 
 impl std::error::Error for EngineError {}
 
-pub trait EngineAdapter {
+pub trait EngineAdapter: Send {
     fn name(&self) -> &str;
     fn capabilities(&self) -> EngineCapabilities;
     fn start(
