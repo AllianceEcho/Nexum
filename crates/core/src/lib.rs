@@ -142,11 +142,17 @@ impl<R: TaskRepository> Core<R> {
     }
 
     pub fn pause_task(&mut self, id: &TaskId) -> Result<(), CoreError> {
+        if let Some(engine_task) = self.engine_tasks.get(id).cloned() {
+            self.engines.get_mut("in-memory").ok_or_else(|| EngineError::Failed("engine not found: in-memory".into()))?.pause(&engine_task)?;
+        }
         self.scheduler.pause(&mut self.tasks, id)?;
         self.persist_task(id)
     }
 
     pub fn resume_task(&mut self, id: &TaskId) -> Result<bool, CoreError> {
+        if let Some(engine_task) = self.engine_tasks.get(id).cloned() {
+            self.engines.get_mut("in-memory").ok_or_else(|| EngineError::Failed("engine not found: in-memory".into()))?.resume(&engine_task)?;
+        }
         let resumed = self.scheduler.resume(&mut self.tasks, id)?;
         if resumed {
             self.persist_task(id)?;
@@ -169,6 +175,9 @@ impl<R: TaskRepository> Core<R> {
     }
 
     pub fn remove_task(&mut self, id: &TaskId) -> Result<DownloadTask, CoreError> {
+        if let Some(engine_task) = self.engine_tasks.remove(id) {
+            self.engines.get_mut("in-memory").ok_or_else(|| EngineError::Failed("engine not found: in-memory".into()))?.remove(&engine_task)?;
+        }
         let task = self.tasks.remove(id)?;
         self.repository.remove(id)?;
         Ok(task)
