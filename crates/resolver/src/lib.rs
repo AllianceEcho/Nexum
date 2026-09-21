@@ -72,7 +72,7 @@ impl fmt::Display for ResolverError {
 
 impl std::error::Error for ResolverError {}
 
-pub trait Resolver {
+pub trait Resolver: Send {
     fn supports(&self, request: &ResolveRequest) -> bool;
     fn resolve(&self, request: &ResolveRequest) -> Result<ResolveResult, ResolverError>;
 }
