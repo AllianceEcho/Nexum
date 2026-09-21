@@ -349,8 +349,7 @@ impl RpcDispatcher {
                 nexum_core::nexum_task::TaskServiceError::NotFound(_),
             ) => DispatchError::TaskNotFound("task not found".into()),
             _ => DispatchError::Internal(format!("{e:?}")),
-        })
-        .map_err(|e| CoreError::Scheduler(e));
+        })?;
         Ok(Value::Bool(true))
     }
     fn task_start<R: nexum_core::nexum_storage::TaskRepository>(
@@ -614,7 +613,8 @@ mod tests {
         let request = RpcRequest::new(1, "server.auth", None);
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert!(response.is_success());
-        let schemes: Vec<&str> = response
+        let result = response.result.unwrap();
+        let schemes: Vec<&str> = result
             .result
             .unwrap()
             .as_array()
