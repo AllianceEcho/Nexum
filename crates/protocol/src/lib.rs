@@ -1,11 +1,13 @@
 //! Nexum JSON-RPC 2.0 protocol primitives.
 
 pub use nexum_security::{
-    AuthenticationError, AuthenticationScheme, Credential, PathPattern, RateLimit, TlsConfig,
+    AuthenticationError, AuthenticationScheme, Credential, RateLimit, TlsConfig,
 };
 
 use nexum_core::Core;
 use nexum_core::CoreError;
+use nexum_core::nexum_scheduler::SchedulerError;
+use nexum_core::TaskServiceError;
 use nexum_domain::{Destination, DownloadSource, TaskId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -344,10 +346,10 @@ impl RpcDispatcher {
             &TaskId::from(id),
             nexum_core::nexum_scheduler::Priority::NORMAL,
         )
-        .map_err(|e| match e {
-            nexum_core::nexum_scheduler::SchedulerError::Task(
-                nexum_core::nexum_task::TaskServiceError::NotFound(_),
-            ) => DispatchError::TaskNotFound("task not found".into()),
+        .map_err(|e| match &e {
+            nexum_core::CoreError::Scheduler(SchedulerError::Task(
+                nexum_core::TaskServiceError::NotFound(_),
+            )) => DispatchError::TaskNotFound("task not found".into()),
             _ => DispatchError::Internal(format!("{e:?}")),
         })?;
         Ok(Value::Bool(true))
@@ -605,7 +607,7 @@ mod tests {
         let request = RpcRequest::new(1, "server.version", None);
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert!(response.is_success());
-        assert_eq!(response.result.unwrap(), json!("1"));
+        assert_eq!(response.get("result").and_then(Value::as_str).unwrap(), json!("1"));
     }
     #[test]
     fn server_auth_returns_supported_schemes() {
@@ -614,8 +616,8 @@ mod tests {
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert!(response.is_success());
         let result = response.result.unwrap();
-        let schemes: Vec<&str> = result
-            .result
+        let schemes: Vec<&str> = response
+            .get("result")
             .unwrap()
             .as_array()
             .unwrap()
