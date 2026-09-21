@@ -11,5 +11,3 @@ nexum-domain = { path = "../domain" }
 nexum-task = { path = "../task" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
