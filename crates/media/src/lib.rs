@@ -172,9 +172,7 @@ impl Job {
 pub struct F64Eq(pub f64);
 
 impl PartialEq for F64Eq {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.to_bits() == other.0.to_bits()
-    }
+    fn eq(&self, other: &Self) -> bool { self.0.to_bits() == other.0.to_bits() }
 }
 impl Eq for F64Eq {}
 
