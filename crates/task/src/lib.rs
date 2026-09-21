@@ -109,6 +109,7 @@ pub enum TaskServiceError {
     AlreadyExists(TaskId),
     NotFound(TaskId),
     InvalidTransition(InvalidTransition),
+    Storage(String),
 }
 
 impl fmt::Display for TaskServiceError {
@@ -117,6 +118,7 @@ impl fmt::Display for TaskServiceError {
             Self::AlreadyExists(id) => write!(f, "task already exists: {id}"),
             Self::NotFound(id) => write!(f, "task not found: {id}"),
             Self::InvalidTransition(error) => error.fmt(f),
+            Self::Storage(message) => write!(f, "storage error: {message}"),
         }
     }
 }
