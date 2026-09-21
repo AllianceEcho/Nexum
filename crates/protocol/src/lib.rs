@@ -1,7 +1,7 @@
 //! Nexum JSON-RPC 2.0 protocol primitives.
 
 pub use nexum_security::{
-    AuthenticationError, AuthenticationScheme, Credential, PathPattern, RateLimit, TlsConfig,
+    AuthenticationError, AuthenticationScheme, Credential, RateLimit, TlsConfig,
 };
 
 use nexum_core::Core;
@@ -9,7 +9,6 @@ use nexum_domain::{Destination, DownloadSource, TaskId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
-use std::path::PathBuf;
 
 pub const JSONRPC_VERSION: &str = "2.0";
 
@@ -344,8 +343,10 @@ impl RpcDispatcher {
             nexum_core::nexum_scheduler::Priority::NORMAL,
         )
         .map_err(|e| match e {
-            nexum_core::nexum_scheduler::SchedulerError::Task(
-                nexum_core::nexum_task::TaskServiceError::NotFound(_),
+            nexum_core::CoreError::Scheduler(
+                nexum_core::nexum_scheduler::SchedulerError::Task(
+                    nexum_core::nexum_task::TaskServiceError::NotFound(_),
+                ),
             ) => DispatchError::TaskNotFound("task not found".into()),
             _ => DispatchError::Internal(format!("{e:?}")),
         })?;
