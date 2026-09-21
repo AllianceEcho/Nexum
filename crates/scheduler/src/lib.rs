@@ -141,6 +141,15 @@ pub enum SchedulerError {
     Task(TaskServiceError),
 }
 
+impl std::fmt::Display for SchedulerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidConcurrencyLimit => write!(f, "invalid concurrency limit"),
+            Self::Task(error) => write!(f, "task error: {error:?}"),
+        }
+    }
+}
+
 impl From<TaskServiceError> for SchedulerError {
     fn from(value: TaskServiceError) -> Self {
         Self::Task(value)
