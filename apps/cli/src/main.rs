@@ -49,15 +49,13 @@ impl Config {
         if !file.is_file() {
             return None;
         }
-        std::fs::read_to_string(&file)
-            .ok()
-            .and_then(|content| {
-                content
-                    .lines()
-                    .find(|l| l.trim().starts_with(&format!("{key}=")))
-                    .and_then(|line| line.split_once('='))
-                    .and_then(|(_, value)| Some(value.trim().to_owned()))
-            })
+        std::fs::read_to_string(&file).ok().and_then(|content| {
+            content
+                .lines()
+                .find(|l| l.trim().starts_with(&format!("{key}=")))
+                .and_then(|line| line.split_once('='))
+                .and_then(|(_, value)| Some(value.trim().to_owned()))
+        })
     }
 
     fn write_config_value(&self, key: &str, value: &str) -> Result<(), String> {
