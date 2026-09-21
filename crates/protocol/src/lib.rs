@@ -4,7 +4,7 @@ pub use nexum_security::{
     AuthenticationError, AuthenticationScheme, Credential, RateLimit, TlsConfig,
 };
 
-use nexum_core::{Core, SchedulerConfig};
+use nexum_core::Core;
 use nexum_domain::{Destination, DownloadSource, TaskId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
