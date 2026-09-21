@@ -6,3 +6,5 @@ license = "MIT"
 description = "Nexum scheduler component"
 
 [dependencies]
+nexum-task = { path = "../task" }
+nexum-domain = { path = "../domain" }
