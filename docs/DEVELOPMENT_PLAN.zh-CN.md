@@ -81,8 +81,8 @@ Scheduler Phase 2 已完成，下一阶段进入 Storage。存储层将通过 Re
 - [ ] SQLite 实现
 - [ ] Schema versioning
 - [ ] Migration 机制
-- [ ] Task 持久化
-- [ ] 重启恢复
+- [x] Task 持久化
+- [x] 重启恢复
 
 ### Phase 4 — Resolver
 
