@@ -24,7 +24,9 @@ impl ResolveRequest {
         Ok(Self { source })
     }
 
-    pub fn source(&self) -> &str { &self.source }
+    pub fn source(&self) -> &str {
+        &self.source
+    }
 
     pub fn kind(&self) -> Result<ResolveKind, ResolverError> {
         let scheme = self.scheme();
@@ -88,13 +90,20 @@ impl Resolver for HttpResolver {
         if !matches!(kind, ResolveKind::Http | ResolveKind::Https) {
             return Err(ResolverError::InvalidSource("not an HTTP source".into()));
         }
-        let authority = request.source().split_once("://")
+        let authority = request
+            .source()
+            .split_once("://")
             .map(|(_, rest)| rest.split(['/', '?', '#']).next().unwrap_or(""))
             .unwrap_or("");
         if authority.is_empty() || authority.starts_with(':') {
-            return Err(ResolverError::InvalidSource("HTTP source is missing a valid host".into()));
+            return Err(ResolverError::InvalidSource(
+                "HTTP source is missing a valid host".into(),
+            ));
         }
-        Ok(ResolveResult { kind, source: request.source().to_owned() })
+        Ok(ResolveResult {
+            kind,
+            source: request.source().to_owned(),
+        })
     }
 }
 
@@ -111,12 +120,18 @@ impl Resolver for MagnetResolver {
             return Err(ResolverError::InvalidSource("not a magnet source".into()));
         }
         let query = request.source().strip_prefix("magnet:?").unwrap_or("");
-        if query.split('&').all(|part| !part.starts_with("xt=urn:btih:")) {
+        if query
+            .split('&')
+            .all(|part| !part.starts_with("xt=urn:btih:"))
+        {
             return Err(ResolverError::InvalidSource(
                 "magnet source is missing an xt=urn:btih parameter".into(),
             ));
         }
-        Ok(ResolveResult { kind: ResolveKind::Magnet, source: request.source().to_owned() })
+        Ok(ResolveResult {
+            kind: ResolveKind::Magnet,
+            source: request.source().to_owned(),
+        })
     }
 }
 
@@ -137,7 +152,10 @@ impl Resolver for LocalResolver {
                 "local source does not exist".into(),
             ));
         }
-        Ok(ResolveResult { kind: ResolveKind::Local, source: request.source().to_owned() })
+        Ok(ResolveResult {
+            kind: ResolveKind::Local,
+            source: request.source().to_owned(),
+        })
     }
 }
 
@@ -181,12 +199,17 @@ impl ResolverRegistry {
 pub struct DefaultResolver(ResolverRegistry);
 
 impl DefaultResolver {
-    pub fn new() -> Self { Self(ResolverRegistry::new()) }
+    pub fn new() -> Self {
+        Self(ResolverRegistry::new())
+    }
 }
 
 impl Resolver for DefaultResolver {
     fn supports(&self, request: &ResolveRequest) -> bool {
-        self.0.resolvers.iter().any(|resolver| resolver.supports(request))
+        self.0
+            .resolvers
+            .iter()
+            .any(|resolver| resolver.supports(request))
     }
 
     fn resolve(&self, request: &ResolveRequest) -> Result<ResolveResult, ResolverError> {
@@ -196,7 +219,9 @@ impl Resolver for DefaultResolver {
 
 impl FromStr for ResolveRequest {
     type Err = ResolverError;
-    fn from_str(source: &str) -> Result<Self, Self::Err> { Self::new(source) }
+    fn from_str(source: &str) -> Result<Self, Self::Err> {
+        Self::new(source)
+    }
 }
 
 #[cfg(test)]
@@ -221,7 +246,10 @@ mod tests {
         let registry = ResolverRegistry::new();
         for source in ["https://", "https://:443/file", "magnet:?dn=file"] {
             let request = ResolveRequest::new(source).unwrap();
-            assert!(matches!(registry.resolve(&request), Err(ResolverError::InvalidSource(_))));
+            assert!(matches!(
+                registry.resolve(&request),
+                Err(ResolverError::InvalidSource(_))
+            ));
         }
     }
 
@@ -238,6 +266,9 @@ mod tests {
     #[test]
     fn rejects_unsupported_schemes() {
         let request = ResolveRequest::new("ftp://example.com/file").unwrap();
-        assert_eq!(request.kind(), Err(ResolverError::UnsupportedScheme("ftp".into())));
+        assert_eq!(
+            request.kind(),
+            Err(ResolverError::UnsupportedScheme("ftp".into()))
+        );
     }
 }

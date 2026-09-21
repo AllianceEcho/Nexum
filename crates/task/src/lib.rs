@@ -38,7 +38,11 @@ pub struct InvalidTransition {
 
 impl fmt::Display for InvalidTransition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid task transition: {:?} -> {:?}", self.from, self.to)
+        write!(
+            f,
+            "invalid task transition: {:?} -> {:?}",
+            self.from, self.to
+        )
     }
 }
 
@@ -54,11 +58,7 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
-    pub fn new(
-        id: impl Into<TaskId>,
-        source: DownloadSource,
-        destination: Destination,
-    ) -> Self {
+    pub fn new(id: impl Into<TaskId>, source: DownloadSource, destination: Destination) -> Self {
         Self {
             id: id.into(),
             source,
@@ -155,9 +155,13 @@ impl TaskService {
             return Err(TaskServiceError::AlreadyExists(id));
         }
 
-        self.tasks
-            .insert(id.clone(), DownloadTask::new(id.clone(), source, destination));
-        self.events.push(TaskEvent::Created { task_id: id.clone() });
+        self.tasks.insert(
+            id.clone(),
+            DownloadTask::new(id.clone(), source, destination),
+        );
+        self.events.push(TaskEvent::Created {
+            task_id: id.clone(),
+        });
 
         Ok(self.tasks.get(&id).expect("task was inserted"))
     }
@@ -332,12 +336,16 @@ mod tests {
             )
             .unwrap();
         service.transition(&id, TaskState::Queued).unwrap();
-        service.update_progress(&id, Progress::new(128, Some(1024))).unwrap();
+        service
+            .update_progress(&id, Progress::new(128, Some(1024)))
+            .unwrap();
 
         assert_eq!(
             service.drain_events(),
             vec![
-                TaskEvent::Created { task_id: id.clone() },
+                TaskEvent::Created {
+                    task_id: id.clone()
+                },
                 TaskEvent::StateChanged {
                     task_id: id.clone(),
                     from: TaskState::Created,
@@ -370,6 +378,9 @@ mod tests {
             )
             .unwrap_err();
 
-        assert_eq!(error, TaskServiceError::AlreadyExists(TaskId::from("task-1")));
+        assert_eq!(
+            error,
+            TaskServiceError::AlreadyExists(TaskId::from("task-1"))
+        );
     }
 }

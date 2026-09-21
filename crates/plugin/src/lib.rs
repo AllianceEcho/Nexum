@@ -25,7 +25,11 @@ pub struct PathPattern {
 impl std::fmt::Display for PathPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.path.display())?;
-        if self.recursive { write!(f, "/**") } else { Ok(()) }
+        if self.recursive {
+            write!(f, "/**")
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -39,7 +43,11 @@ pub struct Capability {
 
 impl Capability {
     pub fn new(name: impl Into<String>, version: impl Into<String>) -> Self {
-        Self { name: name.into(), version: version.into(), features: Vec::new() }
+        Self {
+            name: name.into(),
+            version: version.into(),
+            features: Vec::new(),
+        }
     }
 }
 
@@ -119,8 +127,7 @@ mod tests {
 
     #[test]
     fn manifest_display_includes_name_version_id() {
-        let manifest = PluginManifest::new("id1", "My Plugin", "lib.so")
-            .with_version("1.2.3");
+        let manifest = PluginManifest::new("id1", "My Plugin", "lib.so").with_version("1.2.3");
         let display = format!("{}", manifest);
         assert!(display.contains("My Plugin"));
         assert!(display.contains("1.2.3"));

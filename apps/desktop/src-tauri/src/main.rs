@@ -5,7 +5,8 @@ mod desktop_lib;
 
 #[tauri::command]
 fn server_version(server: String) -> Result<String, String> {
-    desktop_lib::server_version(&server, 5000).ok_or_else(|| "Could not connect to server".to_owned())
+    desktop_lib::server_version(&server, 5000)
+        .ok_or_else(|| "Could not connect to server".to_owned())
 }
 
 #[tauri::command]
@@ -21,7 +22,12 @@ fn task_get(server: String, task_id: String) -> Result<serde_json::Value, String
 }
 
 #[tauri::command]
-fn task_create(server: String, id: String, source: String, destination: String) -> Result<serde_json::Value, String> {
+fn task_create(
+    server: String,
+    id: String,
+    source: String,
+    destination: String,
+) -> Result<serde_json::Value, String> {
     desktop_lib::task_create(&server, &id, &source, &destination, 30000)
         .ok_or_else(|| "Task creation failed".to_owned())
 }
