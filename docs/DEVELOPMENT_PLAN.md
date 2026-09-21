@@ -86,7 +86,10 @@ Goal: define what a download task is and how it behaves.
 
 ### Phase 4 — Resolver
 
-- [ ] HTTP/HTTPS URL resolver
+- [x] Resolver trait and request/result model
+- [x] HTTP/HTTPS source classification
+- [x] Magnet source classification
+- [x] HTTP/HTTPS URL resolver
 - [ ] Magnet resolver
 - [ ] Local source validation
 - [ ] Resolver registry
