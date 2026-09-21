@@ -1,5 +1,8 @@
 //! Nexum JSON-RPC 2.0 protocol primitives.
 
+use nexum_core::Core;
+use nexum_domain::{Destination, DownloadSource, TaskId};
+use nexum_task::TaskState;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
@@ -96,6 +99,106 @@ pub fn parse_request(input: &str) -> Result<RpcRequest, RpcError> {
         .map_err(|error| RpcError::Parse(error.to_string()))?;
     request.validate()?;
     Ok(request)
+}
+
+pub struct RpcDispatcher;
+
+impl RpcDispatcher {
+    pub fn dispatch<R: nexum_core::nexum_storage::TaskRepository>(
+        core: &mut Core<R>,
+        request: &RpcRequest,
+    ) -> RpcResponse {
+        let id = request.id.clone();
+        let params = request.params.clone().unwrap_or(Value::Null);
+
+        let result = match request.method.as_str() {
+            "task.get" => Self::task_get(core, &params),
+            "task.list" => Self::task_list(core),
+            "task.create" => Self::task_create(core, &params),
+            "task.queue" => Self::task_queue(core, &params),
+            "task.start" => Self::task_start(core),
+            "task.pause" => Self::task_pause(core, &params),
+            "task.resume" => Self::task_resume(core, &params),
+            "task.remove" => Self::task_remove(core, &params),
+            _ => return RpcResponse::error(id, RpcErrorObject::method_not_found(&request.method)),
+        };
+
+        match result {
+            Ok(value) => RpcResponse::success(id, value),
+            Err(error) => RpcResponse::error(id, RpcErrorObject::invalid_params(error)),
+        }
+    }
+
+    fn task_get<R: nexum_core::nexum_storage::TaskRepository>(core: &Core<R>, params: &Value) -> Result<Value, String> {
+        let id = params.get("id").and_then(Value::as_str).ok_or("missing id")?;
+        let task = core.tasks.get(&TaskId::from(id)).ok_or("task not found")?;
+        serde_json::to_value(TaskView::from(task)).map_err(|e| e.to_string())
+    }
+
+    fn task_list<R: nexum_core::nexum_storage::TaskRepository>(core: &Core<R>) -> Result<Value, String> {
+        let tasks: Vec<TaskView> = core.tasks.list().map(TaskView::from).collect();
+        serde_json::to_value(tasks).map_err(|e| e.to_string())
+    }
+
+    fn task_create<R: nexum_core::nexum_storage::TaskRepository>(core: &mut Core<R>, params: &Value) -> Result<Value, String> {
+        let id = params.get("id").and_then(Value::as_str).ok_or("missing id")?;
+        let source = params.get("source").and_then(Value::as_str).ok_or("missing source")?;
+        let destination = params.get("destination").and_then(Value::as_str).ok_or("missing destination")?;
+        let task = core.create_task(TaskId::from(id), DownloadSource::new(source), Destination::new(destination))
+            .map_err(|e| format!("{e:?}"))?;
+        serde_json::to_value(TaskView::from(&task)).map_err(|e| e.to_string())
+    }
+
+    fn task_queue<R: nexum_core::nexum_storage::TaskRepository>(core: &mut Core<R>, params: &Value) -> Result<Value, String> {
+        let id = params.get("id").and_then(Value::as_str).ok_or("missing id")?;
+        core.queue_task(&TaskId::from(id), nexum_core::nexum_scheduler::Priority::NORMAL).map_err(|e| format!("{e:?}"))?;
+        Ok(Value::Bool(true))
+    }
+
+    fn task_start<R: nexum_core::nexum_storage::TaskRepository>(core: &mut Core<R>) -> Result<Value, String> {
+        let id = core.start_next().map_err(|e| format!("{e:?}"))?.ok_or("no queued task")?;
+        Ok(Value::String(id.to_string()))
+    }
+
+    fn task_pause<R: nexum_core::nexum_storage::TaskRepository>(core: &mut Core<R>, params: &Value) -> Result<Value, String> {
+        let id = params.get("id").and_then(Value::as_str).ok_or("missing id")?;
+        core.pause_task(&TaskId::from(id)).map_err(|e| format!("{e:?}"))?;
+        Ok(Value::Bool(true))
+    }
+
+    fn task_resume<R: nexum_core::nexum_storage::TaskRepository>(core: &mut Core<R>, params: &Value) -> Result<Value, String> {
+        let id = params.get("id").and_then(Value::as_str).ok_or("missing id")?;
+        Ok(Value::Bool(core.resume_task(&TaskId::from(id)).map_err(|e| format!("{e:?}"))?))
+    }
+
+    fn task_remove<R: nexum_core::nexum_storage::TaskRepository>(core: &mut Core<R>, params: &Value) -> Result<Value, String> {
+        let id = params.get("id").and_then(Value::as_str).ok_or("missing id")?;
+        core.remove_task(&TaskId::from(id)).map_err(|e| format!("{e:?}"))?;
+        Ok(Value::Bool(true))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct TaskView {
+    pub id: String,
+    pub source: String,
+    pub destination: String,
+    pub state: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+}
+
+impl From<&nexum_task::DownloadTask> for TaskView {
+    fn from(task: &nexum_task::DownloadTask) -> Self {
+        Self {
+            id: task.id.to_string(),
+            source: task.source.as_str().to_owned(),
+            destination: task.destination.as_str().to_owned(),
+            state: format!("{:?}", task.state),
+            downloaded_bytes: task.progress.downloaded_bytes,
+            total_bytes: task.progress.total_bytes,
+        }
+    }
 }
 
 pub fn serialize_response(response: &RpcResponse) -> Result<String, RpcError> {
