@@ -117,7 +117,7 @@ pub struct McpMediaRequest {
 }
 
 /// Status of an automated job.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum JobStatus {
     Pending,
     Running,
@@ -167,11 +167,15 @@ impl Job {
     }
 }
 
+/// Wrapper for f64 that implements Eq (f64::nan != f64::nan by IEEE 754).
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct EqF64(pub f64);
+
 /// Result of a completed job.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub struct JobResult {
     pub output_path: PathBuf,
-    pub duration: f64,
+    pub duration: EqF64,
     pub files_produced: Vec<PathBuf>,
     pub metadata: HashMap<String, String>,
 }
@@ -352,7 +356,7 @@ impl AutomationApi for AutomationApiImpl {
         // Simulate processing (actual file processing would use MediaPipeline)
         let result = JobResult {
             output_path: job.output.clone(),
-            duration: 1.0, // simulated
+            duration: EqF64(1.0), // simulated
             files_produced: vec![job.output.clone()],
             metadata: HashMap::new(),
         };
@@ -441,7 +445,7 @@ impl MediaProcessor {
         job.status = JobStatus::Completed;
         job.result = Some(JobResult {
             output_path: job.output.clone(),
-            duration: 0.5,
+            duration: EqF64(0.5),
             files_produced: vec![job.output.clone()],
             metadata: HashMap::new(),
         });
@@ -524,7 +528,7 @@ mod tests {
     fn job_result_serializes() {
         let result = JobResult {
             output_path: PathBuf::from("/out.mkv"),
-            duration: 1.5,
+            duration: EqF64(1.5),
             files_produced: vec![PathBuf::from("/out.mkv")],
             metadata: HashMap::new(),
         };
