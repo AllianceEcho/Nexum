@@ -142,6 +142,9 @@ fn usage() {
     eprintln!("  nexum [--server ADDR] config set-server ADDR");
     eprintln!("  nexum [--server ADDR] auth set SCHEME TOKEN");
     eprintln!("  nexum [--server ADDR] auth clear");
+    eprintln!("  nexum [--server ADDR] server ping");
+    eprintln!("  nexum [--server ADDR] server version");
+    eprintln!("  nexum [--server ADDR] server auth");
     eprintln!("  nexum --version");
     eprintln!("  nexum --help");
 }
@@ -177,10 +180,13 @@ fn main() {
         credential = Config::new().default_credential();
     }
 
-    if args.len() < 2 || (args[0] != "task" && args[0] != "config" && args[0] != "auth") {
+    if args.len() < 2 || (args[0] != "task" && args[0] != "config" && args[0] != "auth" && args[0] != "server") {
         usage();
         std::process::exit(2);
     }
+
+    // If connecting to a server, verify version on first connection
+    let mut verify_version = true;
 
     let (method, params) = match (args[0].as_str(), args[1].as_str()) {
         ("task", "list") if args.len() == 2 => ("task.list", None),
@@ -191,7 +197,13 @@ fn main() {
         ("task", "pause") if args.len() == 3 => ("task.pause", Some(serde_json::json!({"id": args[2]}))),
         ("task", "resume") if args.len() == 3 => ("task.resume", Some(serde_json::json!({"id": args[2]}))),
         ("task", "remove") if args.len() == 3 => ("task.remove", Some(serde_json::json!({"id": args[2]}))),
-        ("config", "get-server") => {
+        ("server", "version") if args.len() == 2 => ("server.version", None),
+        ("server", "auth") if args.len() == 2 => ("server.auth", None),
+        ("server", "ping") => {
+            // Ping queries both server.version and server.auth
+            verify_version = false;
+            ("server.version", None)
+        }
             match get_server_address() {
                 Ok(addr) => {
                     println!("{addr}");
@@ -225,6 +237,20 @@ fn main() {
         Ok(client) => client,
         Err(error) => { eprintln!("{error}"); std::process::exit(1); }
     };
+
+    // Verify server version on first connection (unless explicitly skipping)
+    if verify_version {
+        if let Ok(response) = client.call_with_credential(0, "server.version", None, None) {
+            if let Some(Ok(server_ver)) = response.as_str().map(|v| Ok::<_, String>(v.to_owned())) {
+                let local_ver = nexum_protocol::RpcDispatcher::version();
+                if server_ver != local_ver {
+                    eprintln!("warning: server protocol v{server_ver} differs from client v{local_ver}");
+                } else {
+                    eprintln!("connected: server protocol v{server_ver}");
+                }
+            }
+        }
+    }
 
     match client.call_with_credential(1, method, params, credential) {
         Ok(value) => println!("{}", serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())),
