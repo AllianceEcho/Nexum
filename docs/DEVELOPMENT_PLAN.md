@@ -78,11 +78,11 @@ Goal: define what a download task is and how it behaves.
 ### Phase 3 — Storage
 
 - [x] Repository traits
-- [ ] SQLite implementation
-- [ ] Schema versioning
-- [ ] Migration mechanism
+- [x] SQLite implementation
+- [x] Schema versioning
+- [x] Migration mechanism
 - [x] Task persistence
-- [ ] Recovery after restart
+- [x] Recovery after restart
 
 ### Phase 4 — Resolver
 
@@ -206,4 +206,4 @@ Protocol, storage schema, and plugin APIs require explicit versioning strategies
 
 ## 6. Immediate Work
 
-**Phase 2 — Scheduler is complete.** Phase 3 — Storage is now active. The repository boundary, stored task model, and in-memory repository are implemented; next steps are SQLite, schema versioning, migrations, and restart recovery.
+**Phase 2 — Scheduler is complete.** Phase 3 — Storage is implemented through the repository boundary, SQLite, schema versioning, migrations, task persistence, and initial restart recovery. Next: harden recovery semantics and move into Phase 4 — Resolver.
