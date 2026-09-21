@@ -103,7 +103,7 @@ Goal: define what a download task is and how it behaves.
 - [x] Task mapping
 - [x] Progress mapping
 - [x] Pause/resume/remove mapping
-- [ ] First engine integration
+- [x] First engine integration
 - [ ] Integration tests with controlled fixtures
 
 ### Phase 6 — Nexum Protocol
@@ -209,4 +209,4 @@ Protocol, storage schema, and plugin APIs require explicit versioning strategies
 
 ## 6. Immediate Work
 
-**Phase 2 — Scheduler is complete.** Phase 3 — Storage is implemented through the repository boundary, SQLite, schema versioning, migrations, task persistence, and initial restart recovery. Phase 4 — Resolver now provides source-specific validation and is integrated into Core task creation. Phase 5 — Engine Adapter has started with the adapter boundary, capabilities, and task mapping. Next: integrate Engine Adapter lifecycle with Core and prepare the first real HTTP engine boundary.
+**Phase 2 — Scheduler is complete.** Phase 3 — Storage is implemented through the repository boundary, SQLite, schema versioning, migrations, task persistence, and initial restart recovery. Phase 4 — Resolver now provides source-specific validation and is integrated into Core task creation. Phase 5 — Engine Adapter has started with the adapter boundary, capabilities, and task mapping. Next: strengthen HTTP engine integration tests and begin the Nexum Protocol boundary.
