@@ -230,6 +230,10 @@ impl<R: TaskRepository> Core<R> {
         Ok(restored)
     }
 
+    pub fn drain_task_events(&mut self) -> Vec<nexum_task::TaskEvent> {
+        self.tasks.drain_events()
+    }
+
     pub fn drain_scheduler_events(&mut self) -> Vec<SchedulerEvent> {
         self.scheduler.drain_events()
     }
