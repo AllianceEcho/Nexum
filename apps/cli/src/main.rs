@@ -294,7 +294,9 @@ fn main() {
 
     // Verify server version on first connection (unless explicitly skipping)
     if verify_version {
-        if let Ok(response) = client.call_with_credential(0, "server.version", None, credential.clone()) {
+        if let Ok(response) =
+            client.call_with_credential(0, "server.version", None, credential.clone())
+        {
             if let Some(server_ver) = response.as_str() {
                 let local_ver = nexum_protocol::RpcDispatcher::version();
                 if server_ver != local_ver {
@@ -320,11 +322,6 @@ fn main() {
     }
 }
 
-fn get_server_address() -> Result<String, String> {
-    Config::new()
-        .default_server_address()
-        .ok_or_else(|| "No server address configured. Use: nexum config set-server ADDR".to_owned())
-}
 
 #[cfg(test)]
 mod tests {
