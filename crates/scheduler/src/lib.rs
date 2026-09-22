@@ -80,8 +80,12 @@ pub struct SchedulerConfig {
 pub enum BandwidthPolicyKind {
     #[default]
     Unlimited,
-    Fixed { bytes_per_second: u64 },
-    Shared { total_bytes_per_second: u64 },
+    Fixed {
+        bytes_per_second: u64,
+    },
+    Shared {
+        total_bytes_per_second: u64,
+    },
 }
 
 impl BandwidthPolicy for BandwidthPolicyKind {

@@ -304,9 +304,7 @@ fn main() {
     {
         let local_ver = nexum_protocol::RpcDispatcher::version();
         if server_ver != local_ver {
-            eprintln!(
-                "warning: server protocol v{server_ver} differs from client v{local_ver}"
-            );
+            eprintln!("warning: server protocol v{server_ver} differs from client v{local_ver}");
         } else {
             eprintln!("connected: server protocol v{server_ver}");
         }
