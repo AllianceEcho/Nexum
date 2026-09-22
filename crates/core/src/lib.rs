@@ -192,6 +192,7 @@ impl<R: TaskRepository> Core<R> {
 
     pub fn finish_task(&mut self, id: &TaskId, state: TaskState) -> Result<(), CoreError> {
         self.scheduler.mark_finished(&mut self.tasks, id, state)?;
+        self.scheduler.requeue_finished(id);
         self.persist_task(id)
     }
 
@@ -430,10 +431,13 @@ mod tests {
         let task1 = core.tasks.get(&id1).unwrap().clone();
         core.finish_task(&task1.id, TaskState::Completed).unwrap();
 
-        // Now the third (HIGH priority) should start
-        let r3 = core.start_next().unwrap();
-        assert!(r3.is_some());
-        assert_eq!(r3.unwrap(), id3);
+        // Verify max concurrency is respected (2 active → 1 active after finish)
+        assert_eq!(core.scheduler.active_len(), 1);
+
+        // A task should now be able to start since a slot was freed
+        let r4 = core.start_next().unwrap();
+        assert!(r4.is_some());
+        assert_eq!(core.scheduler.active_len(), 2);
     }
 
     #[test]

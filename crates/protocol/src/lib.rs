@@ -555,7 +555,7 @@ mod tests {
     }
     #[test]
     fn parses_request_with_bearer_credential() {
-        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"Bearer":{"token":"abc123"}}"#).unwrap();
+        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"Bearer":{"token":"abc123"}}}"#).unwrap();
         match request.credential {
             Some(Credential::Bearer { token }) => assert_eq!(token, "abc123"),
             _ => panic!("expected Bearer credential"),
@@ -563,7 +563,7 @@ mod tests {
     }
     #[test]
     fn parses_request_with_apikey_credential() {
-        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"ApiKey":{"key":"my-key"}}"#).unwrap();
+        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"ApiKey":{"key":"my-key"}}}"#).unwrap();
         match request.credential {
             Some(Credential::ApiKey { key }) => assert_eq!(key, "my-key"),
             _ => panic!("expected ApiKey credential"),

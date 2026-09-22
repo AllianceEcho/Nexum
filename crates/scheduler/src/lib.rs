@@ -159,6 +159,7 @@ pub struct Scheduler {
     next_sequence: u64,
     retry_counts: HashMap<TaskId, u32>,
     events: Vec<SchedulerEvent>,
+    task_priorities: HashMap<TaskId, Priority>,
 }
 
 impl Scheduler {
@@ -173,6 +174,7 @@ impl Scheduler {
             next_sequence: 0,
             retry_counts: HashMap::new(),
             events: Vec::new(),
+            task_priorities: HashMap::new(),
         })
     }
 
@@ -203,15 +205,24 @@ impl Scheduler {
         if self.active_tasks >= self.config.max_concurrent_tasks {
             return Ok(None);
         }
-        let Some(entry) = self.queue.pop_front() else {
-            return Ok(None);
-        };
-        task_service.transition(&entry.task_id, TaskState::Downloading)?;
-        self.active_tasks += 1;
-        self.events.push(SchedulerEvent::Started {
-            task_id: entry.task_id.clone(),
-        });
-        Ok(Some(entry.task_id))
+        loop {
+            let Some(entry) = self.queue.pop_front() else {
+                return Ok(None);
+            };
+            // Skip tasks that are already running to avoid re-picking them after finish.
+            if task_service
+                .get(&entry.task_id)
+                .is_some_and(|t| t.state == TaskState::Downloading)
+            {
+                continue;
+            }
+            task_service.transition(&entry.task_id, TaskState::Downloading)?;
+            self.active_tasks += 1;
+            self.events.push(SchedulerEvent::Started {
+                task_id: entry.task_id.clone(),
+            });
+            return Ok(Some(entry.task_id));
+        }
     }
 
     pub fn pause(
@@ -295,8 +306,13 @@ impl Scheduler {
     pub fn queued_len(&self) -> usize {
         self.queue.len()
     }
+
     pub fn active_len(&self) -> usize {
         self.active_tasks
+    }
+
+    fn remove_from_queue(&mut self, task_id: &TaskId) {
+        self.queue.retain(|e| &e.task_id != task_id);
     }
 
     pub fn bandwidth_limit_bytes_per_second(&self) -> Option<u64> {
@@ -310,6 +326,7 @@ impl Scheduler {
     }
 
     fn push_queue(&mut self, task_id: &TaskId, priority: Priority) {
+        self.task_priorities.insert(task_id.clone(), priority);
         self.queue.push_back(QueueEntry {
             task_id: task_id.clone(),
             priority,
@@ -327,6 +344,13 @@ impl Scheduler {
                 .then_with(|| a.sequence.cmp(&b.sequence))
         });
         self.queue = entries.into();
+    }
+
+    /// Re-queue a finished task with its original priority so it can be restarted.
+    pub fn requeue_finished(&mut self, task_id: &TaskId) {
+        if let Some(&priority) = self.task_priorities.get(task_id) {
+            self.push_queue(task_id, priority);
+        }
     }
 }
 

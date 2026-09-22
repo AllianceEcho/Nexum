@@ -72,7 +72,7 @@ pub struct TlsConfig {
 impl TlsConfig {
     /// Returns true if all required paths are provided.
     pub fn is_complete(&self) -> bool {
-        self.cert_path.is_some() && self.key_path.is_some()
+        self.cert_path.is_some() && self.key_path.is_some() && self.ca_path.is_some()
     }
 }
 

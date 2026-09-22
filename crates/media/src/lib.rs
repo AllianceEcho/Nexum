@@ -529,7 +529,7 @@ mod tests {
         );
         let json = serde_json::to_string(&job).unwrap();
         assert!(json.contains("\"id\":1"));
-        assert!(json.contains("\"status\":\"pending\""));
+        assert!(json.contains("\"status\":\"Pending\""));
     }
 
     #[test]
@@ -642,18 +642,17 @@ mod tests {
 
     #[test]
     fn media_processor_schedules_and_executes() {
-        let processor = MediaProcessor::new();
+        let mut processor = MediaProcessor::new();
         let job = Job::new(
             1,
             "test",
             PathBuf::from("/in.mp4"),
             PathBuf::from("/out.mkv"),
         );
-        let processor = &mut (processor as AutomationApiImpl);
 
         processor.schedule(job).unwrap();
-        assert!(processor.jobs().contains_key(&1));
-        assert_eq!(processor.jobs().get(&1).unwrap().status, JobStatus::Pending);
+        assert!(processor.jobs.contains_key(&1));
+        assert_eq!(processor.jobs.get(&1).unwrap().status, JobStatus::Pending);
 
         let job = Job::new(
             1,
@@ -667,7 +666,7 @@ mod tests {
 
     #[test]
     fn media_processor_runs_workflow() {
-        let processor = MediaProcessor::new();
+        let mut processor = MediaProcessor::new();
         let workflow = WorkflowDefinition::new("test")
             .with_step(WorkflowStep::new(
                 0,
@@ -680,7 +679,6 @@ mod tests {
                     .with_depends_on(0),
             );
 
-        let processor = &mut (processor as AutomationApiImpl);
         let results = processor.run_workflow(workflow).unwrap();
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|j| j.status == JobStatus::Completed));
