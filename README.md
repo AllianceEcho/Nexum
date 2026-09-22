@@ -6,10 +6,10 @@
 
 Nexum is a Rust-based download platform built around a stable **Core + Protocol** boundary. It brings task management, scheduling, persistence, resolvers, download engines, a TCP server, CLI, desktop client, browser integration, and plugin foundations into one extensible architecture.
 
-[![CI](https://github.com/AllianceEcho/Nexum/actions/workflows/ci.yml/badge.svg)](https://github.com/AllianceEcho/Nexum/actions/workflows/ci.yml)
+[![CI](https://github.com/liveait/Nexum/actions/workflows/ci.yml/badge.svg)](https://github.com/liveait/Nexum/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Status:** Nexum is under active development. The current repository provides working foundations across Core, Protocol, Server, CLI, Desktop, Browser, Security, Plugins, and Media. Media workflows, automation, executable plugins, and additional engines remain in development.
+> **Status:** Nexum is under active development. The repository now has working foundations across Core, Protocol, Server, CLI, Desktop, Browser, Security, Plugins, and Media. Plugin lifecycle, additional resolver/engine integrations, media workflows, automation, and remote management remain in development.
 
 ## Why Nexum?
 
@@ -267,7 +267,7 @@ Nexum therefore should currently be understood as a **download platform foundati
 
 ## Development status
 
-The repository has working foundations across **Phases 1–4**, with the beginning of the Media & Automation phase.
+The repository has working foundations across **Phases 0–9**, plus the foundational pieces of **Phase 10 (Extensibility)** and **Phase 11 (Media & Automation)**.
 
 Implemented foundations include:
 
@@ -287,6 +287,7 @@ Implemented foundations include:
 - Security foundations
 - Plugin Manifest / Permission / Capability / SDK foundations
 - Foundational media structures
+- GitHub Actions CI with formatting, workspace checks, tests, and Clippy validation
 
 See the [Roadmap](ROADMAP.md) for the authoritative work breakdown.
 
