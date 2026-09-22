@@ -86,13 +86,13 @@ fn handle_connection(mut stream: TcpStream, core: Arc<Mutex<Core>>) -> std::io::
         if let Ok(request) = parse_request(&line)
             && let Some(ref cred) = request.credential
         {
-                match cred {
-                    Credential::None => {}
-                    Credential::Bearer { .. } | Credential::ApiKey { .. } => {
-                        eprintln!("  -> {} (credential: {})", request.method, cred);
-                    }
+            match cred {
+                Credential::None => {}
+                Credential::Bearer { .. } | Credential::ApiKey { .. } => {
+                    eprintln!("  -> {} (credential: {})", request.method, cred);
                 }
             }
+        }
 
         let response = match parse_request(&line) {
             Ok(request) => {
