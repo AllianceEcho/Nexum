@@ -1,4 +1,4 @@
-use nexum_protocol::{Credential, RpcRequest, parse_request, serialize_response};
+use nexum_protocol::{Credential, RpcRequest};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
@@ -54,7 +54,7 @@ impl Config {
                 .lines()
                 .find(|l| l.trim().starts_with(&format!("{key}=")))
                 .and_then(|line| line.split_once('='))
-                .and_then(|(_, value)| Some(value.trim().to_owned()))
+                .map(|(_, value)| value.trim().to_owned())
         })
     }
 
@@ -141,6 +141,7 @@ impl JsonRpcClient {
     }
 }
 
+#[allow(dead_code)]
 fn format_rpc_error(response: &nexum_protocol::RpcResponse) -> Option<String> {
     response
         .error
@@ -207,8 +208,18 @@ fn main() {
         std::process::exit(2);
     }
 
+    // Handle server.ping separately (returns address and exits)
+    if args.len() >= 2 && args[0] == "server" && args[1] == "ping" {
+        let addr = get_server_address().unwrap_or_else(|e| {
+            eprintln!("{e}");
+            std::process::exit(1);
+        });
+        println!("{addr}");
+        return;
+    }
+
     // If connecting to a server, verify version on first connection
-    let mut verify_version = true;
+    let verify_version = true;
 
     let (method, params) = match (args[0].as_str(), args[1].as_str()) {
         ("task", "list") if args.len() == 2 => ("task.list", None),
@@ -234,21 +245,6 @@ fn main() {
         }
         ("server", "version") if args.len() == 2 => ("server.version", None),
         ("server", "auth") if args.len() == 2 => ("server.auth", None),
-        ("server", "ping") => {
-            // Ping queries both server.version and server.auth
-            verify_version = false;
-            match get_server_address() {
-                Ok(addr) => {
-                    println!("{addr}");
-                    return;
-                }
-                Err(e) => {
-                    eprintln!("{e}");
-                    std::process::exit(1);
-                }
-            }
-            ("server.version", None)
-        }
         ("config", "set-server") if args.len() == 3 => {
             match Config::new().set_server_address(&args[2]) {
                 Ok(()) => {
@@ -267,7 +263,7 @@ fn main() {
                     println!(
                         "Authentication set: {} (token: {}...)",
                         args[2],
-                        &args[3].chars().take(4).collect::<String>()
+                        args[3].chars().take(4).collect::<String>()
                     );
                     return;
                 }
@@ -302,18 +298,17 @@ fn main() {
     };
 
     // Verify server version on first connection (unless explicitly skipping)
-    if verify_version {
-        if let Ok(response) = client.call_with_credential(0, "server.version", None, None) {
-            if let Some(Ok(server_ver)) = response.as_str().map(|v| Ok::<_, String>(v.to_owned())) {
-                let local_ver = nexum_protocol::RpcDispatcher::version();
-                if server_ver != local_ver {
-                    eprintln!(
-                        "warning: server protocol v{server_ver} differs from client v{local_ver}"
-                    );
-                } else {
-                    eprintln!("connected: server protocol v{server_ver}");
-                }
-            }
+    if verify_version
+        && let Ok(response) = client.call_with_credential(0, "server.version", None, None)
+        && let Some(Ok(server_ver)) = response.as_str().map(|v| Ok::<_, String>(v.to_owned()))
+    {
+        let local_ver = nexum_protocol::RpcDispatcher::version();
+        if server_ver != local_ver {
+            eprintln!(
+                "warning: server protocol v{server_ver} differs from client v{local_ver}"
+            );
+        } else {
+            eprintln!("connected: server protocol v{server_ver}");
         }
     }
 

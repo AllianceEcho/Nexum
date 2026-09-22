@@ -4,20 +4,15 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Authentication credentials passed with requests.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub enum Credential {
     /// No authentication.
+    #[default]
     None,
     /// Bearer token (e.g., JWT).
     Bearer { token: String },
     /// API key.
     ApiKey { key: String },
-}
-
-impl Default for Credential {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl std::fmt::Display for Credential {
@@ -31,17 +26,12 @@ impl std::fmt::Display for Credential {
 }
 
 /// Authentication scheme used to extract credentials from a request.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub enum AuthenticationScheme {
+    #[default]
     None,
     Bearer(String),
     ApiKey(String),
-}
-
-impl Default for AuthenticationScheme {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl AuthenticationScheme {

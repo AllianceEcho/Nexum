@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
-use std::sync::Mutex;
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum JsonRpcError {
     #[serde(untagged)]
@@ -78,12 +78,11 @@ pub fn call_rpc(server: &str, method: &str, params: Option<Value>, timeout_ms: u
 
     // Read response
     let reader = BufReader::new(stream);
-    let mut line = String::new();
-    match reader.lines().next() {
-        Some(Ok(l)) => line = l,
+    let line = match reader.lines().next() {
+        Some(Ok(l)) => l,
         Some(Err(e)) => return RpcResult::err(format!("read: {e}")),
         None => return RpcResult::err("no response".to_owned()),
-    }
+    };
 
     // Parse response
     match serde_json::from_str::<serde_json::Value>(&line) {

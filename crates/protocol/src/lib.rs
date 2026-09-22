@@ -13,8 +13,9 @@ use std::fmt;
 pub const JSONRPC_VERSION: &str = "2.0";
 
 /// Protocol version negotiated between client and server.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ProtocolVersion {
+    #[default]
     V1,
 }
 
@@ -24,12 +25,6 @@ impl ProtocolVersion {
         match self {
             Self::V1 => "1",
         }
-    }
-}
-
-impl Default for ProtocolVersion {
-    fn default() -> Self {
-        Self::V1
     }
 }
 
@@ -251,22 +246,20 @@ impl RpcDispatcher {
             "server.auth" => Self::server_auth(),
             _ => Err(DispatchError::MethodNotFound),
         };
-        if id.is_none() {
-            return None;
-        }
+        let id = id.clone()?;
         Some(match result {
-            Ok(value) => RpcResponse::success(id, value),
+            Ok(value) => RpcResponse::success(Some(id), value),
             Err(DispatchError::InvalidParams(message)) => {
-                RpcResponse::error(id, RpcErrorObject::invalid_params(message))
+                RpcResponse::error(Some(id), RpcErrorObject::invalid_params(message))
             }
             Err(DispatchError::TaskNotFound(message)) => {
-                RpcResponse::error(id, RpcErrorObject::task_not_found(message))
+                RpcResponse::error(Some(id), RpcErrorObject::task_not_found(message))
             }
             Err(DispatchError::Internal(message)) => {
-                RpcResponse::error(id, RpcErrorObject::internal_error(message))
+                RpcResponse::error(Some(id), RpcErrorObject::internal_error(message))
             }
             Err(DispatchError::MethodNotFound) => {
-                RpcResponse::error(id, RpcErrorObject::method_not_found(&request.method))
+                RpcResponse::error(Some(id), RpcErrorObject::method_not_found(&request.method))
             }
         })
     }
@@ -280,7 +273,7 @@ impl RpcDispatcher {
             .iter()
             .map(|&s| s.to_owned())
             .collect();
-        Ok(serde_json::to_value(schemes).map_err(|e| DispatchError::Internal(e.to_string()))?)
+        serde_json::to_value(schemes).map_err(|e| DispatchError::Internal(e.to_string()))
     }
 
     fn task_get<R: nexum_core::nexum_storage::TaskRepository>(

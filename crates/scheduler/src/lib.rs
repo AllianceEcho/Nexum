@@ -76,17 +76,12 @@ pub struct SchedulerConfig {
     pub bandwidth_policy: BandwidthPolicyKind,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum BandwidthPolicyKind {
+    #[default]
     Unlimited,
     Fixed { bytes_per_second: u64 },
     Shared { total_bytes_per_second: u64 },
-}
-
-impl Default for BandwidthPolicyKind {
-    fn default() -> Self {
-        Self::Unlimited
-    }
 }
 
 impl BandwidthPolicy for BandwidthPolicyKind {
@@ -309,10 +304,6 @@ impl Scheduler {
 
     pub fn active_len(&self) -> usize {
         self.active_tasks
-    }
-
-    fn remove_from_queue(&mut self, task_id: &TaskId) {
-        self.queue.retain(|e| &e.task_id != task_id);
     }
 
     pub fn bandwidth_limit_bytes_per_second(&self) -> Option<u64> {
