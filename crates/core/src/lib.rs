@@ -4,13 +4,14 @@ pub use nexum_domain;
 pub use nexum_engine;
 pub use nexum_resolver;
 pub use nexum_scheduler;
+pub use nexum_scheduler::SchedulerConfig;
 pub use nexum_storage;
 pub use nexum_task;
 
 use nexum_domain::{Destination, DownloadSource, TaskId};
 use nexum_engine::{EngineError, EngineRegistry, EngineTask};
 use nexum_resolver::{ResolveRequest, ResolveResult, ResolverError, ResolverRegistry};
-use nexum_scheduler::{Priority, Scheduler, SchedulerConfig, SchedulerError, SchedulerEvent};
+use nexum_scheduler::{Priority, Scheduler, SchedulerError, SchedulerEvent};
 use nexum_storage::{InMemoryRepository, StorageError, StoredTask, TaskRepository};
 use nexum_task::{DownloadTask, TaskService, TaskServiceError, TaskState};
 use std::collections::HashMap;
@@ -468,7 +469,7 @@ mod tests {
         assert!(!events.is_empty());
         assert!(matches!(
             &events[0],
-            nexum_core::nexum_scheduler::SchedulerEvent::Enqueued { .. }
+            nexum_scheduler::SchedulerEvent::Enqueued { .. }
         ));
     }
 

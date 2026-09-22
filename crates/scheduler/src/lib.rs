@@ -141,6 +141,15 @@ pub enum SchedulerError {
     Task(TaskServiceError),
 }
 
+impl std::fmt::Display for SchedulerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidConcurrencyLimit => write!(f, "invalid concurrency limit"),
+            Self::Task(error) => write!(f, "task error: {error:?}"),
+        }
+    }
+}
+
 impl From<TaskServiceError> for SchedulerError {
     fn from(value: TaskServiceError) -> Self {
         Self::Task(value)
@@ -358,7 +367,10 @@ mod tests {
             max_concurrent_tasks: 0,
             ..SchedulerConfig::default()
         });
-        assert_eq!(result, Err(SchedulerError::InvalidConcurrencyLimit));
+        assert!(matches!(
+            result,
+            Err(SchedulerError::InvalidConcurrencyLimit)
+        ));
     }
 
     #[test]
@@ -494,6 +506,7 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             retry_policy: RetryPolicy { max_retries: 2 },
+            ..SchedulerConfig::default()
         })
         .unwrap();
         scheduler
@@ -550,6 +563,7 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             retry_policy: RetryPolicy { max_retries: 1 },
+            ..SchedulerConfig::default()
         })
         .unwrap();
         scheduler
