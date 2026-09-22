@@ -522,7 +522,6 @@ impl EventBuffer {
 mod tests {
     use super::*;
     use nexum_core::Core;
-    use nexum_core::nexum_scheduler::SchedulerConfig;
     use nexum_domain::{Destination, DownloadSource};
     use serde_json::json;
 
