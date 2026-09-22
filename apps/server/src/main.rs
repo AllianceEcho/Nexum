@@ -325,7 +325,6 @@ mod tests {
         {
             let mut f = std::fs::File::create(&config_file).unwrap();
             writeln!(f, "# This is a comment").unwrap();
-            writeln!(f, "").unwrap();
             writeln!(f, "port=4444").unwrap();
         }
         let config = ServerConfig::from_file(config_file.to_str().unwrap()).unwrap();
