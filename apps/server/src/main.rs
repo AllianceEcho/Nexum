@@ -83,8 +83,9 @@ fn handle_connection(mut stream: TcpStream, core: Arc<Mutex<Core>>) -> std::io::
         }
 
         // Log credential scheme for debugging (if present and not None)
-        if let Ok(request) = parse_request(&line) {
-            if let Some(ref cred) = request.credential {
+        if let Ok(request) = parse_request(&line)
+            && let Some(ref cred) = request.credential
+        {
                 match cred {
                     Credential::None => {}
                     Credential::Bearer { .. } | Credential::ApiKey { .. } => {
@@ -92,7 +93,6 @@ fn handle_connection(mut stream: TcpStream, core: Arc<Mutex<Core>>) -> std::io::
                     }
                 }
             }
-        }
 
         let response = match parse_request(&line) {
             Ok(request) => {
@@ -143,10 +143,10 @@ fn parse_cli_flags() -> (ServerConfig, PathBuf, bool, bool) {
             "--port" => {
                 has_cli_port = true;
                 i += 1;
-                if i < args.len() {
-                    if let Ok(port) = args[i].parse::<u16>() {
-                        config.port = port;
-                    }
+                if i < args.len()
+                    && let Ok(port) = args[i].parse::<u16>()
+                {
+                    config.port = port;
                 }
             }
             "--data-dir" => {
@@ -159,19 +159,19 @@ fn parse_cli_flags() -> (ServerConfig, PathBuf, bool, bool) {
             "--max-connections" => {
                 has_cli_max_connections = true;
                 i += 1;
-                if i < args.len() {
-                    if let Ok(max) = args[i].parse::<usize>() {
-                        config.max_connections = max;
-                    }
+                if i < args.len()
+                    && let Ok(max) = args[i].parse::<usize>()
+                {
+                    config.max_connections = max;
                 }
             }
             "--require-auth" => {
                 has_cli_require_auth = true;
                 i += 1;
-                if i < args.len() {
-                    if let Ok(req) = args[i].parse::<bool>() {
-                        config.require_auth = req;
-                    }
+                if i < args.len()
+                    && let Ok(req) = args[i].parse::<bool>()
+                {
+                    config.require_auth = req;
                 }
             }
             "--version" => show_version = true,
@@ -182,20 +182,20 @@ fn parse_cli_flags() -> (ServerConfig, PathBuf, bool, bool) {
     }
 
     // Load from config file if provided, applying file defaults only where CLI didn't override
-    if !config_path.is_empty() {
-        if let Ok(file_config) = ServerConfig::from_file(config_path.to_str().unwrap_or("")) {
-            if !has_cli_port {
-                config.port = file_config.port;
-            }
-            if !has_cli_data_dir {
-                config.data_dir = file_config.data_dir;
-            }
-            if !has_cli_max_connections {
-                config.max_connections = file_config.max_connections;
-            }
-            if !has_cli_require_auth {
-                config.require_auth = file_config.require_auth;
-            }
+    if !config_path.is_empty()
+        && let Ok(file_config) = ServerConfig::from_file(config_path.to_str().unwrap_or(""))
+    {
+        if !has_cli_port {
+            config.port = file_config.port;
+        }
+        if !has_cli_data_dir {
+            config.data_dir = file_config.data_dir;
+        }
+        if !has_cli_max_connections {
+            config.max_connections = file_config.max_connections;
+        }
+        if !has_cli_require_auth {
+            config.require_auth = file_config.require_auth;
         }
     }
 
@@ -204,7 +204,6 @@ fn parse_cli_flags() -> (ServerConfig, PathBuf, bool, bool) {
 
 fn print_usage() {
     eprintln!("usage: nexum-server [OPTIONS]");
-    eprintln!("");
     eprintln!("Options:");
     eprintln!("  --config PATH       Load config from file");
     eprintln!("  --port PORT         Server port (default: 39100)");

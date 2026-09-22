@@ -252,7 +252,7 @@ fn main() {
                     println!(
                         "Authentication set: {} (token: {}...)",
                         args[2],
-                        &args[3].chars().take(4).collect::<String>()
+                        args[3].chars().take(4).collect::<String>()
                     );
                     return;
                 }
@@ -287,19 +287,19 @@ fn main() {
     };
 
     // Verify server version on first connection (unless explicitly skipping)
-    if verify_version {
-        if let Ok(response) =
+    #[allow(clippy::collapsible_if)]
+    if verify_version
+        && let Ok(response) =
             client.call_with_credential(0, "server.version", None, credential.clone())
-        {
-            if let Some(server_ver) = response.as_str() {
-                let local_ver = nexum_protocol::RpcDispatcher::version();
-                if server_ver != local_ver {
-                    eprintln!(
-                        "warning: server protocol v{server_ver} differs from client v{local_ver}"
-                    );
-                } else {
-                    eprintln!("connected: server protocol v{server_ver}");
-                }
+    {
+        if let Some(server_ver) = response.as_str() {
+            let local_ver = nexum_protocol::RpcDispatcher::version();
+            if server_ver != local_ver {
+                eprintln!(
+                    "warning: server protocol v{server_ver} differs from client v{local_ver}"
+                );
+            } else {
+                eprintln!("connected: server protocol v{server_ver}");
             }
         }
     }

@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum JsonRpcError {
     #[serde(untagged)]
