@@ -21,8 +21,8 @@ Nexum will be developed from the core outward.
 - [x] English and Simplified Chinese documentation
 - [x] Rust workspace
 - [x] GitHub CI
-- [ ] Verified clean workspace build on CI
-- [ ] Formal formatting and linting policy
+- [x] Verified clean workspace build on CI
+- [x] Formal formatting and linting policy
 
 ### Phase 1 — Domain & Task Core
 
@@ -175,4 +175,4 @@ Protocol, storage schema, and plugin APIs require explicit versioning strategies
 
 ## 6. Current Focus
 
-Phases 0–9 have working foundations in the repository. Phase 10 has the plugin manifest, permission, capability, and SDK foundations. The next architectural focus is the transport layer and plugin lifecycle, followed by the media and automation work described in Phase 11.
+Phases 0–9 have working foundations in the repository. Phase 10 has the plugin manifest, permission, capability, and SDK foundations. The current focus is plugin lifecycle and additional resolver/engine integrations, followed by media workflows and automation.
