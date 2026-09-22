@@ -613,9 +613,8 @@ mod tests {
         let request = RpcRequest::new(1, "server.auth", None);
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert!(response.is_success());
-        let schemes: Vec<&str> = response
-            .result
-            .unwrap()
+        let result = response.result.clone().unwrap();
+        let schemes: Vec<&str> = result
             .as_array()
             .unwrap()
             .iter()
