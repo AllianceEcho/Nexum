@@ -6,10 +6,10 @@
 
 Nexum 是一个基于 Rust 构建的下载平台，以稳定的 **Core + Protocol** 边界为核心，将任务管理、调度、持久化、Resolver、下载引擎、TCP Server、CLI、桌面客户端、浏览器集成与插件基础能力组织在统一架构中。
 
-[![CI](https://github.com/AllianceEcho/Nexum/actions/workflows/ci.yml/badge.svg)](https://github.com/AllianceEcho/Nexum/actions/workflows/ci.yml)
+[![CI](https://github.com/liveait/Nexum/actions/workflows/ci.yml/badge.svg)](https://github.com/liveait/Nexum/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **状态：** Nexum 仍在积极开发中。当前仓库已经形成 Core、Protocol、Server、CLI、Desktop、Browser、Security、Plugin 与 Media 等基础能力；媒体工作流、自动化、可执行插件及更多下载引擎仍在持续开发。
+> **状态：** Nexum 仍在积极开发中。当前仓库已经形成 Core、Protocol、Server、CLI、Desktop、Browser、Security、Plugin 与 Media 等基础能力；插件生命周期、更多 Resolver / Engine 集成、媒体工作流、自动化与远程管理仍在持续开发。
 
 ## 为什么是 Nexum？
 
@@ -271,7 +271,7 @@ Media 层当前提供基础媒体类型与探测结构。
 
 ## 开发状态
 
-仓库已经形成 **Phase 1–4** 的工作基础，并开始进入 Media & Automation 阶段。
+仓库已经形成 **Phase 0–9** 的工作基础，并完成 **Phase 10（Extensibility）** 与 **Phase 11（Media & Automation）** 的基础能力建设。
 
 当前已实现的基础能力包括：
 
@@ -290,6 +290,7 @@ Media 层当前提供基础媒体类型与探测结构。
 - Manifest V3 Browser 集成
 - Security 基础能力
 - Plugin Manifest / Permission / Capability / SDK 基础
+- GitHub Actions CI：格式化、Workspace 检查、测试与 Clippy 校验
 - 基础 Media Structures
 
 详细工作拆分以 [Roadmap](ROADMAP.zh-CN.md) 为准。

@@ -22,6 +22,11 @@
 - 同步 README、架构、开发指南、路线图与开发计划，使其与当前仓库实现状态一致。
 - 保持英文与简体中文项目文档同步。
 
+### 修复
+
+- **CI**：移除重复的 Workflow，并修复 Workspace 兼容性问题，使主 CI 完成格式化、检查、测试与 Clippy 校验。
+- **Branding**：刷新 Desktop、Browser Extension 与 macOS 图标资源，并修复无效的 PNG / ICNS 数据。
+
 ## [0.1.0] - TBD
 
 - 初始项目结构与公开开发基础。

@@ -21,8 +21,8 @@ Nexum 从核心向外开发。
 - [x] 中英文文档体系
 - [x] Rust workspace
 - [x] GitHub CI
-- [ ] CI 上验证 workspace 完整构建通过
-- [ ] 正式的格式化与 lint 规范
+- [x] CI 上验证 workspace 完整构建通过
+- [x] 正式的格式化与 lint 规范
 
 ### Phase 1 — Domain 与 Task Core
 
@@ -175,4 +175,4 @@ Protocol、Storage Schema 和 Plugin API 在成为稳定公共接口前，都需
 
 ## 6. 当前重点
 
-Phase 0–9 已在仓库中形成可工作的基础能力。Phase 10 已完成 Plugin Manifest、Permission、Capability 与 SDK 骨架。下一阶段重点是 Transport 层和 Plugin 生命周期，然后进入 Phase 11 的媒体与自动化工作。
+Phase 0–9 已在仓库中形成可工作的基础能力。Phase 10 已完成 Plugin Manifest、Permission、Capability 与 SDK 骨架。当前重点是 Plugin 生命周期、更多 Resolver / Engine 集成，然后进入媒体工作流与自动化。
