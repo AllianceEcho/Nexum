@@ -151,7 +151,7 @@ impl From<TaskServiceError> for SchedulerError {
 ///
 /// The scheduler decides which queued tasks may start. It does not execute
 /// network I/O and therefore remains independent of a concrete download engine.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Scheduler {
     config: SchedulerConfig,
     queue: VecDeque<QueueEntry>,
@@ -494,6 +494,7 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             retry_policy: RetryPolicy { max_retries: 2 },
+            bandwidth_policy: BandwidthPolicyKind::Unlimited,
         })
         .unwrap();
         scheduler
@@ -550,6 +551,7 @@ mod tests {
         let mut scheduler = Scheduler::new(SchedulerConfig {
             max_concurrent_tasks: 1,
             retry_policy: RetryPolicy { max_retries: 1 },
+            bandwidth_policy: BandwidthPolicyKind::Unlimited,
         })
         .unwrap();
         scheduler
