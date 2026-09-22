@@ -48,7 +48,7 @@ impl fmt::Display for EngineError {
 
 impl std::error::Error for EngineError {}
 
-pub trait EngineAdapter: Send {
+pub trait EngineAdapter {
     fn name(&self) -> &str;
     fn capabilities(&self) -> EngineCapabilities;
     fn start(
@@ -218,6 +218,7 @@ impl Default for HttpEngine {
     }
 }
 
+#[expect(dead_code)]
 impl HttpEngine {
     pub fn new() -> Self {
         Self::default()
@@ -230,6 +231,50 @@ impl HttpEngine {
         self.tasks
             .get(&task.handle)
             .ok_or_else(|| EngineError::TaskNotFound(task.task_id.clone()))
+    }
+
+    fn entry_mut(
+        &mut self,
+        task: &EngineTask,
+    ) -> Result<&mut (TaskId, EngineTaskState, Progress, String), EngineError> {
+        self.tasks
+            .get_mut(&task.handle)
+            .ok_or_else(|| EngineError::TaskNotFound(task.task_id.clone()))
+    }
+
+    fn download(&self, source: &str, destination: &str) -> Result<Progress, EngineError> {
+        let mut response = self
+            .client
+            .get(source)
+            .send()
+            .map_err(|error| EngineError::Failed(error.to_string()))?;
+        if !response.status().is_success() {
+            return Err(EngineError::Failed(format!(
+                "HTTP GET returned {}",
+                response.status()
+            )));
+        }
+
+        let total = response.content_length();
+        let mut file = std::fs::File::create(destination)
+            .map_err(|error| EngineError::Failed(error.to_string()))?;
+        let mut downloaded = 0u64;
+        let mut buffer = [0u8; 32 * 1024];
+
+        loop {
+            use std::io::{Read, Write};
+            let read = response
+                .read(&mut buffer)
+                .map_err(|error| EngineError::Failed(error.to_string()))?;
+            if read == 0 {
+                break;
+            }
+            file.write_all(&buffer[..read])
+                .map_err(|error| EngineError::Failed(error.to_string()))?;
+            downloaded += read as u64;
+        }
+
+        Ok(Progress::new(downloaded, total))
     }
 }
 
@@ -341,7 +386,7 @@ impl EngineAdapter for HttpEngine {
 }
 
 pub struct EngineRegistry {
-    engines: Vec<Box<dyn EngineAdapter>>,
+    engines: Vec<Box<dyn EngineAdapter + Send>>,
 }
 
 impl Default for EngineRegistry {
@@ -357,11 +402,11 @@ impl EngineRegistry {
         }
     }
 
-    pub fn register(&mut self, engine: Box<dyn EngineAdapter>) {
+    pub fn register(&mut self, engine: Box<dyn EngineAdapter + Send>) {
         self.engines.push(engine);
     }
 
-    pub fn get(&self, name: &str) -> Option<&dyn EngineAdapter> {
+    pub fn get(&self, name: &str) -> Option<&(dyn EngineAdapter + Send)> {
         self.engines
             .iter()
             .find(|engine| engine.name() == name)
@@ -380,7 +425,7 @@ impl EngineRegistry {
             .find(|engine| engine.name() == name)
             .map(|engine| engine.start(task_id, source, destination))
             .ok_or_else(|| EngineError::Failed(format!("engine not found: {name}")))
-            .unwrap_or_else(|e| Err(e))
+            .unwrap_or_else(Err)
     }
 
     pub fn pause_engine(&mut self, name: &str, task: &EngineTask) -> Result<(), EngineError> {
@@ -536,7 +581,7 @@ mod tests {
         assert!(registry.get("missing").is_none());
         assert!(
             registry
-                .start_engine("in-memory", &TaskId::new("x"), "https://x", "/x")
+                .start_engine("fake", &TaskId::new("x"), "https://x", "/x")
                 .is_ok()
         );
     }
