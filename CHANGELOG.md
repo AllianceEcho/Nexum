@@ -22,6 +22,11 @@ All notable changes to Nexum will be documented here.
 - Synchronized README, architecture, development guides, roadmap, and development plans with the implemented repository state.
 - Kept English and Simplified Chinese project documentation aligned.
 
+### Fixed
+
+- **CI**: removed redundant workflow configuration and repaired workspace compatibility issues so the main CI workflow passes formatting, checks, tests, and Clippy.
+- **Branding**: refreshed Desktop, Browser Extension, and macOS icon assets and corrected invalid PNG/ICNS payloads.
+
 ## [0.1.0] - TBD
 
 - Initial project structure and public development foundation.
