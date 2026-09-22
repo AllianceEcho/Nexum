@@ -580,7 +580,7 @@ mod tests {
         assert!(registry.get("missing").is_none());
         assert!(
             registry
-                .start_engine(&TaskId::new("x"), "/x", "https://x")
+                .start_engine("fake", &TaskId::new("x"), "https://x", "/x")
                 .is_ok()
         );
     }
