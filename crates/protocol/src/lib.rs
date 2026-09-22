@@ -13,8 +13,9 @@ use std::fmt;
 pub const JSONRPC_VERSION: &str = "2.0";
 
 /// Protocol version negotiated between client and server.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ProtocolVersion {
+    #[default]
     V1,
 }
 
@@ -24,12 +25,6 @@ impl ProtocolVersion {
         match self {
             Self::V1 => "1",
         }
-    }
-}
-
-impl Default for ProtocolVersion {
-    fn default() -> Self {
-        Self::V1
     }
 }
 
@@ -251,22 +246,20 @@ impl RpcDispatcher {
             "server.auth" => Self::server_auth(),
             _ => Err(DispatchError::MethodNotFound),
         };
-        if id.is_none() {
-            return None;
-        }
+        let id = id.as_ref().cloned()?;
         Some(match result {
-            Ok(value) => RpcResponse::success(id, value),
+            Ok(value) => RpcResponse::success(Some(id), value),
             Err(DispatchError::InvalidParams(message)) => {
-                RpcResponse::error(id, RpcErrorObject::invalid_params(message))
+                RpcResponse::error(Some(id), RpcErrorObject::invalid_params(message))
             }
             Err(DispatchError::TaskNotFound(message)) => {
-                RpcResponse::error(id, RpcErrorObject::task_not_found(message))
+                RpcResponse::error(Some(id), RpcErrorObject::task_not_found(message))
             }
             Err(DispatchError::Internal(message)) => {
-                RpcResponse::error(id, RpcErrorObject::internal_error(message))
+                RpcResponse::error(Some(id), RpcErrorObject::internal_error(message))
             }
             Err(DispatchError::MethodNotFound) => {
-                RpcResponse::error(id, RpcErrorObject::method_not_found(&request.method))
+                RpcResponse::error(Some(id), RpcErrorObject::method_not_found(&request.method))
             }
         })
     }
@@ -280,7 +273,7 @@ impl RpcDispatcher {
             .iter()
             .map(|&s| s.to_owned())
             .collect();
-        Ok(serde_json::to_value(schemes).map_err(|e| DispatchError::Internal(e.to_string()))?)
+        serde_json::to_value(schemes).map_err(|e| DispatchError::Internal(e.to_string()))
     }
 
     fn task_get<R: nexum_core::nexum_storage::TaskRepository>(
@@ -342,10 +335,10 @@ impl RpcDispatcher {
             &TaskId::from(id),
             nexum_core::nexum_scheduler::Priority::NORMAL,
         )
-        .map_err(|e| match e {
+        .map_err(|e| match &e {
             nexum_core::CoreError::Scheduler(
                 nexum_core::nexum_scheduler::SchedulerError::Task(
-                    nexum_core::nexum_task::TaskServiceError::NotFound(_),
+                    nexum_task::TaskServiceError::NotFound(_),
                 ),
             ) => DispatchError::TaskNotFound("task not found".into()),
             _ => DispatchError::Internal(format!("{e:?}")),
@@ -528,7 +521,7 @@ impl EventBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nexum_core::{Core, SchedulerConfig};
+    use nexum_core::Core;
     use nexum_domain::{Destination, DownloadSource};
     use serde_json::json;
 
@@ -554,7 +547,7 @@ mod tests {
     }
     #[test]
     fn parses_request_with_bearer_credential() {
-        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"Bearer":{"token":"abc123"}}"#).unwrap();
+        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"Bearer":{"token":"abc123"}}}"#).unwrap();
         match request.credential {
             Some(Credential::Bearer { token }) => assert_eq!(token, "abc123"),
             _ => panic!("expected Bearer credential"),
@@ -562,7 +555,7 @@ mod tests {
     }
     #[test]
     fn parses_request_with_apikey_credential() {
-        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"ApiKey":{"key":"my-key"}}"#).unwrap();
+        let request = parse_request(r#"{"jsonrpc":"2.0","id":1,"method":"task.list","credential":{"ApiKey":{"key":"my-key"}}}"#).unwrap();
         match request.credential {
             Some(Credential::ApiKey { key }) => assert_eq!(key, "my-key"),
             _ => panic!("expected ApiKey credential"),
@@ -591,7 +584,7 @@ mod tests {
     #[test]
     fn notifications_have_no_response() {
         let request = RpcRequest::notification("task.list", None);
-        let mut core = Core::new(SchedulerConfig::default()).unwrap();
+        let mut core = Core::new(nexum_scheduler::SchedulerConfig::default()).unwrap();
         assert!(RpcDispatcher::dispatch(&mut core, &request).is_none());
     }
     #[test]
@@ -600,15 +593,18 @@ mod tests {
     }
     #[test]
     fn server_version_method_works() {
-        let mut core = Core::new(SchedulerConfig::default()).unwrap();
+        let mut core = Core::new(nexum_scheduler::SchedulerConfig::default()).unwrap();
         let request = RpcRequest::new(1, "server.version", None);
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert!(response.is_success());
-        assert_eq!(response.result.unwrap(), json!("1"));
+        assert_eq!(
+            response.result.as_ref().and_then(Value::as_str).unwrap(),
+            json!("1")
+        );
     }
     #[test]
     fn server_auth_returns_supported_schemes() {
-        let mut core = Core::new(SchedulerConfig::default()).unwrap();
+        let mut core = Core::new(nexum_scheduler::SchedulerConfig::default()).unwrap();
         let request = RpcRequest::new(1, "server.auth", None);
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert!(response.is_success());
@@ -624,7 +620,7 @@ mod tests {
     #[test]
     fn unknown_method_is_reported() {
         let request = RpcRequest::new(1, "task.unknown", None);
-        let mut core = Core::new(SchedulerConfig::default()).unwrap();
+        let mut core = Core::new(nexum_scheduler::SchedulerConfig::default()).unwrap();
         let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
         assert_eq!(response.error.unwrap().code, -32601);
     }
@@ -641,7 +637,7 @@ mod tests {
 
     #[test]
     fn event_buffer_collects_core_events() {
-        let mut core = Core::new(SchedulerConfig::default()).unwrap();
+        let mut core = Core::new(nexum_scheduler::SchedulerConfig::default()).unwrap();
         core.create_task(
             TaskId::from("t1"),
             DownloadSource::new("https://example.com/file"),

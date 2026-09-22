@@ -117,7 +117,7 @@ pub struct McpMediaRequest {
 }
 
 /// Status of an automated job.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum JobStatus {
     Pending,
     Running,
@@ -517,7 +517,7 @@ mod tests {
         );
         let json = serde_json::to_string(&job).unwrap();
         assert!(json.contains("\"id\":1"));
-        assert!(json.contains("\"status\":\"pending\""));
+        assert!(json.contains("\"status\":\"Pending\""));
     }
 
     #[test]
@@ -637,6 +637,7 @@ mod tests {
             PathBuf::from("/in.mp4"),
             PathBuf::from("/out.mkv"),
         );
+
         processor.schedule(job).unwrap();
         assert!(processor.jobs().contains_key(&1));
         assert_eq!(processor.jobs().get(&1).unwrap().status, JobStatus::Pending);

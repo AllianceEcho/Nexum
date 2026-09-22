@@ -76,17 +76,16 @@ pub struct SchedulerConfig {
     pub bandwidth_policy: BandwidthPolicyKind,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub enum BandwidthPolicyKind {
+    #[default]
     Unlimited,
-    Fixed { bytes_per_second: u64 },
-    Shared { total_bytes_per_second: u64 },
-}
-
-impl Default for BandwidthPolicyKind {
-    fn default() -> Self {
-        Self::Unlimited
-    }
+    Fixed {
+        bytes_per_second: u64,
+    },
+    Shared {
+        total_bytes_per_second: u64,
+    },
 }
 
 impl BandwidthPolicy for BandwidthPolicyKind {
@@ -298,6 +297,17 @@ impl Scheduler {
             }
             _ => unreachable!(),
         }
+        Ok(())
+    }
+
+    /// Requeue a task that has completed or failed so it can be restarted.
+    pub fn requeue_finished(
+        &mut self,
+        task_service: &mut TaskService,
+        task_id: &TaskId,
+    ) -> Result<(), SchedulerError> {
+        task_service.transition(task_id, TaskState::Queued)?;
+        self.push_queue(task_id, Priority::NORMAL);
         Ok(())
     }
 
