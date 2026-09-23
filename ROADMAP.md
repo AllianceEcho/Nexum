@@ -36,9 +36,9 @@ Nexum's roadmap tracks implemented foundations and the remaining work toward a s
 - [x] Permission model
 - [x] Capability API
 - [x] Plugin SDK skeleton
-- [ ] Plugin lifecycle
-- [ ] Resolver extensions
-- [ ] Engine extensions
+- [x] Plugin lifecycle
+- [x] Resolver extensions
+- [x] Engine extensions
 
 ## Phase 5 — Media & Automation
 

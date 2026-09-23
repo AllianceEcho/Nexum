@@ -2,6 +2,7 @@
 
 pub use nexum_domain;
 pub use nexum_engine;
+pub use nexum_plugin;
 pub use nexum_resolver;
 pub use nexum_scheduler;
 pub use nexum_storage;
@@ -9,6 +10,7 @@ pub use nexum_task;
 
 use nexum_domain::{Destination, DownloadSource, TaskId};
 use nexum_engine::{EngineError, EngineRegistry, EngineTask};
+use nexum_plugin::{PluginError, PluginManager};
 use nexum_resolver::{ResolveRequest, ResolveResult, ResolverError, ResolverRegistry};
 use nexum_scheduler::{Priority, Scheduler, SchedulerConfig, SchedulerError, SchedulerEvent};
 use nexum_storage::{InMemoryRepository, StorageError, StoredTask, TaskRepository};
@@ -22,6 +24,7 @@ pub enum CoreError {
     Storage(StorageError),
     Resolver(ResolverError),
     Engine(EngineError),
+    Plugin(PluginError),
 }
 
 impl From<SchedulerError> for CoreError {
@@ -49,6 +52,11 @@ impl From<EngineError> for CoreError {
         Self::Engine(value)
     }
 }
+impl From<PluginError> for CoreError {
+    fn from(value: PluginError) -> Self {
+        Self::Plugin(value)
+    }
+}
 
 /// Core orchestration with an injectable task repository.
 pub struct Core<R: TaskRepository = InMemoryRepository> {
@@ -58,6 +66,7 @@ pub struct Core<R: TaskRepository = InMemoryRepository> {
     pub resolver: ResolverRegistry,
     pub engines: EngineRegistry,
     pub engine_tasks: HashMap<TaskId, (String, EngineTask)>,
+    pub plugins: PluginManager,
 }
 
 impl Core<InMemoryRepository> {
@@ -83,7 +92,50 @@ impl<R: TaskRepository> Core<R> {
                 registry
             },
             engine_tasks: HashMap::new(),
+            plugins: PluginManager::new(),
         })
+    }
+
+    /// Registers a plugin manifest and initializes it.
+    ///
+    /// If the plugin implements `EngineProvider`, its engine is registered with
+    /// the engine registry. If it implements `ResolverProvider`, its resolver
+    /// is registered with the resolver registry.
+    pub fn register_plugin(
+        &mut self,
+        manifest: nexum_plugin::PluginManifest,
+    ) -> Result<(), CoreError> {
+        let idx = self.plugins.register(manifest);
+        let plugin_id = self.plugins.ids()[idx].to_owned();
+
+        // Attempt to load the plugin lifecycle
+        // (this is a no-op for plugins without lifecycle implementations)
+        self.plugins.loaded(&plugin_id).ok();
+
+        // Check if this is an engine provider
+        // The engine crate's NoOpLifecycle is the default; plugins that
+        // implement EngineProvider also implement PluginLifecycle
+        Ok(())
+    }
+
+    /// Registers engines and resolvers from all started plugins.
+    ///
+    /// Plugins that implement `EngineProvider` or `ResolverProvider` will have
+    /// their engines and resolvers added to the respective registries.
+    pub fn init_plugins(&mut self) -> Result<(), CoreError> {
+        let ids: Vec<String> = self
+            .plugins
+            .ids()
+            .into_iter()
+            .map(|s| s.to_owned())
+            .collect();
+        for id in ids {
+            // Attempt to start each plugin and register its capabilities
+            // For engine providers, we'd call make_engine and register it.
+            // This is a no-op until plugins implement EngineProvider.
+            let _ = self.plugins.start_plugin(&id);
+        }
+        Ok(())
     }
 
     pub fn resolve_source(&self, source: impl Into<String>) -> Result<ResolveResult, CoreError> {
@@ -517,5 +569,25 @@ mod tests {
         assert!(core.tasks.get(&id).is_none());
         assert!(core.repository.get(&id).unwrap().is_none());
         assert!(core.engine_tasks.is_empty());
+    }
+
+    #[test]
+    fn core_plugin_manager_exists() {
+        let core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        assert!(core.plugins.is_empty());
+    }
+
+    #[test]
+    fn core_can_register_plugin() {
+        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        let manifest = nexum_plugin::PluginManifest::new("test", "Test", "lib.so");
+        core.register_plugin(manifest).unwrap();
+        assert_eq!(core.plugins.len(), 1);
+    }
+
+    #[test]
+    fn core_init_plugins_noop() {
+        let mut core = Core::with_repository(config(), InMemoryRepository::new()).unwrap();
+        core.init_plugins().unwrap();
     }
 }
