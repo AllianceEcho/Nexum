@@ -185,6 +185,11 @@ impl ResolverRegistry {
         self
     }
 
+    /// Registers a resolver at runtime (e.g. from a plugin).
+    pub fn register_resolver(&mut self, resolver: Box<dyn Resolver + Send>) {
+        self.resolvers.push(resolver);
+    }
+
     pub fn resolve(&self, request: &ResolveRequest) -> Result<ResolveResult, ResolverError> {
         for resolver in &self.resolvers {
             if resolver.supports(request) {
@@ -269,6 +274,35 @@ mod tests {
         assert_eq!(
             request.kind(),
             Err(ResolverError::UnsupportedScheme("ftp".into()))
+        );
+    }
+
+    // ——— Resolver extension tests ——
+
+    #[test]
+    fn registry_accepts_runtime_resolver_registration() {
+        let mut registry = ResolverRegistry::new();
+
+        struct PrefixResolver(String);
+        impl Resolver for PrefixResolver {
+            fn supports(&self, request: &ResolveRequest) -> bool {
+                request.source().starts_with(&self.0)
+            }
+            fn resolve(&self, request: &ResolveRequest) -> Result<ResolveResult, ResolverError> {
+                self.supports(request)
+                    .then(|| ResolveResult {
+                        kind: ResolveKind::Http,
+                        source: request.source().to_owned(),
+                    })
+                    .ok_or(ResolverError::InvalidSource("not supported".into()))
+            }
+        }
+
+        registry.register_resolver(Box::new(PrefixResolver("http://prefix".into())));
+        assert!(
+            registry
+                .resolve(&ResolveRequest::new("http://prefix/file").unwrap())
+                .is_ok()
         );
     }
 }

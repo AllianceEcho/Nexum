@@ -7,8 +7,9 @@ description = "Nexum core orchestration layer"
 
 [dependencies]
 nexum-domain = { path = "../domain" }
-nexum-task = { path = "../task" }
+nexum-engine = { path = "../engine" }
+nexum-plugin = { path = "../plugin" }
+nexum-resolver = { path = "../resolver" }
 nexum-scheduler = { path = "../scheduler" }
 nexum-storage = { path = "../storage" }
-nexum-resolver = { path = "../resolver" }
-nexum-engine = { path = "../engine" }
+nexum-task = { path = "../task" }

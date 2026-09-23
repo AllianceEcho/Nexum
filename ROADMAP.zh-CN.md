@@ -36,9 +36,9 @@ Nexum 路线图用于记录已经落地的基础能力，以及后续稳定化�
 - [x] Permission Model
 - [x] Capability API
 - [x] Plugin SDK 骨架
-- [ ] Plugin 生命周期
-- [ ] Resolver 扩展
-- [ ] Engine 扩展
+- [x] Plugin 生命周期
+- [x] Resolver 扩展
+- [x] Engine 扩展
 
 ## Phase 5 — Media & Automation
 
