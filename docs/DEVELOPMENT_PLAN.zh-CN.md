@@ -1,178 +1,119 @@
 # Nexum 开发计划
 
-## 1. 开发原则
+本计划区分“代码中已有基础能力”和“当前 Server/客户端可端到端使用的功能”。勾选表示仓库中已有对应实现；未勾选表示仍需实现或接线。计划项目仅说明方向，不承诺固定的发布时间。当前调用路径见[架构设计](ARCHITECTURE.zh-CN.md)，工程和提交规范见[贡献指南](../CONTRIBUTING.zh-CN.md)。
 
-Nexum 从核心向外开发。
+## 1. 开发阶段
 
-1. 先定义领域模型，再构建 UI。
-2. 先定义任务生命周期，再实现调度器。
-3. 围绕稳定的 Core 设计 Protocol。
-4. 通过明确接口隔离持久化实现。
-5. 核心抽象经过测试后，再接入具体下载引擎。
-6. 每个里程碑完成后，仓库都必须保持可构建、可测试。
+### Phase 0 - 项目基础
 
-## 2. 开发阶段
+- [x] 仓库结构、MIT License、贡献与治理文档
+- [x] 英文和简体中文文档
+- [x] 包含 Server、CLI、Desktop Tauri crate 和 Core crates 的 Rust workspace
+- [x] GitHub CI 工作流已配置格式检查、workspace check/test 和 Clippy
 
-### Phase 0 — 项目基础
+### Phase 1 - Domain 与 Task Core
 
-- [x] 仓库结构
-- [x] MIT License
-- [x] 贡献与治理文档
-- [x] 中英文文档体系
-- [x] Rust workspace
-- [x] GitHub CI
-- [x] CI 上验证 workspace 完整构建通过
-- [x] 正式的格式化与 lint 规范
+- [x] Domain 值类型和下载任务模型
+- [x] 带校验的任务状态机
+- [x] 内存任务服务与 Task Events
+- [x] 任务生命周期和状态转换单元测试
 
-### Phase 1 — Domain 与 Task Core
+### Phase 2 - Scheduler
 
-- [x] Domain Model
-- [x] Task 状态机
-- [x] 状态转换验证
-- [x] Task Service
-- [x] Task Events
-- [x] 单元测试
+- [x] 优先级队列与任务并发上限
+- [x] 重试策略和暂停/恢复操作
+- [x] 带宽策略接口与限速值计算
+- [x] Scheduler Events 与受控单元测试
+- [ ] 将计算出的带宽限制应用到传输
+- [ ] 在 Server 中自动派发排队任务、推进运行中任务
 
-### Phase 2 — Scheduler
+### Phase 3 - Storage
 
-- [x] Queue 抽象
-- [x] 并发限制
-- [x] 优先级
-- [x] Retry Policy
-- [x] 暂停 / 恢复调度
-- [x] 带宽策略抽象
-- [x] Scheduler Events
+- [x] `TaskRepository` 与内存实现
+- [x] 带 Schema Version 和 Migration 的 SQLite 任务元数据/进度 Repository
+- [x] 重建排队任务的 `Core::recover`，并有库级测试
+- [ ] 在 Server 启动路径打开 SQLite 并执行恢复
+- [ ] 验证真实 Server 重启后任务连续性
 
-### Phase 3 — Storage
+### Phase 4 - Resolver
 
-- [x] Repository Trait
-- [x] InMemory Repository
-- [x] SQLite 实现
-- [x] Schema Versioning
-- [x] Migration
-- [x] Task 持久化
-- [x] 重启恢复
+- [x] Resolver 请求/结果/错误模型与 Registry
+- [x] HTTP/HTTPS 校验、Magnet `xt=urn:btih:` 参数存在性检查、已有本地路径校验
+- [x] Resolver 测试与 Core 创建任务时的来源校验
+- [ ] 将解析后的来源路由到兼容 Engine
+- [ ] 增加真实 Magnet 与本地来源传输路径
 
-### Phase 4 — Resolver
+### Phase 5 - Engine Adapter
 
-- [x] Resolver Trait 与 Request / Result Model
-- [x] HTTP/HTTPS 分类与校验
-- [x] Magnet 分类与校验
-- [x] 本地来源处理
-- [x] Resolver Registry
-- [x] Resolver Error Model
-- [x] Resolver 测试
-
-### Phase 5 — Engine Adapter
-
-- [x] Adapter Trait
-- [x] Engine Capabilities
-- [x] Task / Progress Mapping
-- [x] Pause / Resume / Remove Mapping
-- [x] InMemory Engine
-- [x] HTTP Engine 与重定向跟随
+- [x] Adapter Capability、Task Mapping 与 Engine Registry
+- [x] 模拟 InMemory Engine 和支持重定向的阻塞式 HTTP GET Engine
 - [x] 受控 Engine 测试
+- [ ] 允许 Server/CLI/Desktop 任务操作选择 HTTP Engine；当前 `task.start` 使用 InMemory Engine
+- [ ] 为真实传输增加非阻塞进度、取消与可用的暂停/恢复能力
 
-### Phase 6 — Nexum Protocol
+### Phase 6 - Nexum Protocol 与 Security
 
-- [x] JSON-RPC 2.0 Envelope
-- [x] Request / Response Model
-- [x] Task APIs
-- [x] 传输中立事件信封
-- [x] Error Codes
-- [x] Protocol 版本协商
-- [x] 鉴权边界
-- [x] Compatibility Tests
+- [x] JSON-RPC 2.0 请求/响应与错误对象
+- [x] Task 创建/查询/列表/排队/启动/暂停/恢复/删除，以及 Server 信息查询方法
+- [x] V1 版本类型、请求字段和 `server.version` 方法
+- [x] Task/Scheduler 事件信封与缓存
+- [x] Credential、TLS、限流类型及 Protocol/Security 单元测试
+- [ ] 在信封校验之外执行 Protocol 兼容性检查
+- [ ] 通过 Server 传输发布事件，并让客户端接收
+- [ ] 校验 Credential，并按配置执行认证、TLS 与限流
 
-### Phase 7 — Server 与 CLI
+### Phase 7 - Server 与 CLI
 
-- [x] TCP Server
-- [x] Local Server Mode
-- [x] CLI JSON-RPC Client
-- [x] 任务创建与控制
-- [x] 可配置 Server 连接
-- [x] 认证与服务器信息命令
-- [x] Server Configuration
+- [x] 使用按行 JSON-RPC 的本地回环 TCP Server
+- [x] 支持任务控制、地址配置和 Server 信息查询的 CLI TCP 客户端
+- [x] Server 命令行选项与 key-value 配置解析
+- [ ] 执行 `require_auth` 和 `max_connections`；当前只解析这两项
+- [ ] 利用 `data_dir` 实现 SQLite 持久化与重启恢复
+- [ ] 让普通 `task.start` 对支持的来源执行真实下载
 
-### Phase 8 — Desktop
+### Phase 8 - Desktop
 
-- [x] Tauri 2 Shell
-- [x] React Application
-- [x] Task List / Detail
-- [x] 添加下载
-- [x] 暂停 / 恢复 / 删除
-- [x] Server Settings
-- [x] 事件驱动 / 轮询更新
+- [x] Tauri 2 + React 应用与 TCP JSON-RPC 命令桥接
+- [x] Task 列表、添加、排队/启动、暂停/恢复与删除 UI
+- [x] 可编辑 Server 地址，操作或地址变更后刷新
+- [ ] 增加定时或事件驱动更新，反映进度和外部任务变化
+- [ ] 持久化 Server 设置，可靠呈现连接与操作失败
 
-### Phase 9 — Browser Integration
+### Phase 9 - Browser 集成
 
-- [x] Manifest V3 Extension
-- [x] Context Menu
-- [x] 可下载链接拦截
-- [x] Send-to-Nexum
-- [x] Server / Device Selection
+- [x] Manifest V3 扩展骨架、链接右键菜单和可下载链接标记启发式逻辑
+- [x] 保存单个 Server 地址的 Popup 字段
+- [ ] 使用受支持的传输完成 Send-to-Nexum；扩展向 HTTP `/jsonrpc` 发请求，而 Server 只支持 TCP
+- [ ] 在后台脚本使用已保存的 `server` 地址；当前读的是 `address` 字段
+- [ ] 处理 Content Script 的发送消息，并完成端到端任务创建测试
+- [ ] 若多设备投递仍是产品需求，增加设备选择
 
-### Phase 10 — Extensibility
+### Phase 10 - 可扩展性
 
-- [x] Plugin Manifest
-- [x] Permission Model
-- [x] Capability API
-- [x] Plugin SDK 骨架
-- [ ] Plugin 生命周期
-- [ ] Resolver Plugins
-- [ ] Engine Plugins
+- [x] Plugin Manifest、Permission 和 Capability 数据模型
+- [x] `PluginManager` 状态转换与测试
+- [x] `EngineProvider` 和 `ResolverProvider` Trait
+- [ ] 调用插件生命周期实现并加载可执行插件入口
+- [ ] 向 Core 注册插件提供的 Engine/Resolver；当前初始化只改变 Manager 状态
+- [ ] 执行 Permission 约束，并定义稳定的 SDK/Runtime 合约
 
-### Phase 11 — Media & Automation
+### Phase 11 - Media 与 Automation
 
-- [x] 基础媒体数据结构
-- [ ] 媒体探测工作流
-- [ ] Manifest Parsing
-- [ ] Track Selection
-- [ ] Segment Scheduling
-- [ ] Mux / Post-processing
-- [ ] Automation API
-- [ ] AI / MCP Integration
-- [ ] Remote Device Management
+- [x] Media、Job、Workflow 与 MCP Request 基础类型
+- [x] Workflow 依赖排序和模拟的内存 Job API
+- [ ] 探测真实媒体并解析 Manifest
+- [ ] 实现 Track Selection、Segment Scheduling、Mux 与后处理
+- [ ] 执行并持久化真实 Job/Workflow，而不是构造模拟完成结果
+- [ ] 对外提供 Automation 端点，并按需集成 AI/MCP
+- [ ] 实现远程设备管理
 
-## 3. 实施顺序
+## 2. 基于当前代码的实施顺序
 
-Foundation → Domain → Task State Machine → Task Service → Scheduler → Storage → Resolver → Engine Adapter → Protocol → Server/CLI → Desktop/Browser → Extensibility → Media/Automation。
+1. 让现有 Server 路径具备持久化和真实用途：SQLite 启动/恢复、Engine 选择、真实 HTTP 任务执行。
+2. 补齐 Server/客户端合约：按配置认证的传输、可观察的进度/事件，以及 Browser 可用的端点或桥接。
+3. 接入 Plugin Provider 并执行其声明的权限。
+4. 用真实处理替换模拟的 Media 操作，再对外提供 Automation 与远程设备工作流。
 
-## 4. 工程规则
+## 3. 当前重点
 
-### 测试
-
-Core 行为必须可以在无网络环境下测试。网络和 Engine 行为应放在受控集成测试层。
-
-### 依赖
-
-优先选择小而明确的依赖。每个依赖都应该解决具体问题。
-
-### API 稳定性
-
-任何跨 crate 暴露的 API 都应视为 API 边界。Breaking Change 必须经过明确讨论并记录。
-
-### 错误处理
-
-错误应保留可操作的上下文，不能在子系统边界被简单压缩成无上下文字符串。
-
-### 可观测性
-
-Core 操作应使用结构化事件，并逐步采用结构化日志，而不是依赖零散输出。
-
-### 兼容性
-
-Protocol、Storage Schema 和 Plugin API 在成为稳定公共接口前，都需要明确版本策略。
-
-## 5. Git 工作流
-
-- main 保持可构建。
-- 功能开发使用聚焦的分支。
-- 小修复可以直接进入 PR。
-- 架构变化必须先 RFC。
-- 每个里程碑应由可审查的提交组成。
-- Release 从已知可用的 commit 打标签。
-
-## 6. 当前重点
-
-Phase 0–9 已在仓库中形成可工作的基础能力。Phase 10 已完成 Plugin Manifest、Permission、Capability 与 SDK 骨架。当前重点是 Plugin 生命周期、更多 Resolver / Engine 集成，然后进入媒体工作流与自动化。
+Phase 0-9 各自具有不同程度的脚手架和库级覆盖，但运行中的 Server 仍使用内存 Repository 与内存 Engine。近期重点是补齐这个运行链路。Plugin 与 Media crates 已包含数据类型之外的代码，但 Provider 回调和真实处理尚未接入产品路径。

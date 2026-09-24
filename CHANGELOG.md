@@ -6,20 +6,20 @@ All notable changes to Nexum will be documented here.
 
 ### Added
 
-- **Core**: task lifecycle, scheduler, SQLite persistence, restart recovery, resolver integration, and event collection.
-- **Engine**: InMemory engine and HTTP engine with redirect following and progress reporting.
-- **Protocol**: JSON-RPC 2.0 task APIs, transport-neutral events, protocol version negotiation, and authentication boundary.
-- **Server**: multi-threaded TCP JSON-RPC service with configurable runtime settings and authentication support.
-- **CLI**: task management, reusable JSON-RPC client, server configuration, authentication commands, server inspection, and RPC error formatting.
-- **Desktop**: Tauri 2 + React application with task management and server settings.
-- **Browser**: Manifest V3 extension with context-menu, downloadable-link detection, send-to-Nexum flow, and server/device selection.
-- **Security**: credential, authentication, TLS configuration, and rate-limit foundations.
-- **Plugin**: manifest, permission, capability, and SDK foundations.
-- **Media**: foundational media types and probing structures.
+- **Core**: task lifecycle, scheduler, resolver integration, and event collection. SQLite storage and restart recovery are available through library APIs; the running server uses an in-memory repository.
+- **Engine**: in-memory and HTTP adapters. The HTTP adapter follows redirects and records a final byte-count snapshot after a blocking download; the RPC `task.start` method currently selects the in-memory adapter.
+- **Protocol**: JSON-RPC 2.0 task and server-info methods, a version identifier, credential fields, and event envelope/buffer types. The server does not stream events or enforce credentials.
+- **Server**: localhost, line-delimited TCP JSON-RPC with one thread per connection. Configuration is parsed, but connection limits and required authentication are not enforced.
+- **CLI**: task commands, a reusable TCP JSON-RPC client, saved server address and credential fields, server inspection, and RPC error formatting.
+- **Desktop**: Tauri 2 + React task UI connected to the TCP server, with a server-address field and manual task refresh.
+- **Browser**: Manifest V3 context menu, link detection, and popup configuration. Its HTTP send request is not yet compatible with the TCP-only server.
+- **Security**: credential, TLS, and rate-limit types; server-side authentication, TLS, and rate limiting remain unimplemented.
+- **Plugin**: manifest, permission, capability, lifecycle-state, and provider-trait foundations. Core tracks plugin manifests but does not yet load provider engines or resolvers.
+- **Media**: media and workflow models with simulated, in-memory probing and job execution; no real media processing is wired in.
 
 ### Documentation
 
-- Synchronized README, architecture, development guides, roadmap, and development plans with the implemented repository state.
+- Synchronized README, architecture, development guides, and the consolidated development plan with the implemented repository state.
 - Kept English and Simplified Chinese project documentation aligned.
 
 ### Fixed
