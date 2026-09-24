@@ -1,11 +1,37 @@
 //! Nexum TCP server with configuration support.
 
-use nexum_core::Core;
-use nexum_protocol::{Credential, RpcDispatcher, parse_request, serialize_response};
-use std::io::{BufRead, BufReader, Write};
+use nexum_core::{
+    Core, nexum_domain::TaskId, nexum_engine::HttpEngine, nexum_resolver::ResolveKind,
+    nexum_scheduler::SchedulerConfig, nexum_storage::SqliteRepository, nexum_task::TaskState,
+};
+use nexum_protocol::{
+    Credential, RpcDispatcher, RpcErrorObject, RpcRequest, RpcResponse, parse_request,
+    serialize_response,
+};
+use std::collections::HashSet;
+use std::fs::{File, OpenOptions};
+use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
+
+type ServerCore = Core<SqliteRepository>;
+const DATABASE_FILE: &str = "nexum.sqlite";
+const LOCK_FILE: &str = "nexum.lock";
+
+struct ServerState {
+    core: ServerCore,
+    data_dir: PathBuf,
+    active_http: HashSet<TaskId>,
+    active_destinations: HashSet<PathBuf>,
+}
+
+struct HttpTransfer {
+    id: TaskId,
+    source: String,
+    destination: String,
+    destination_path: PathBuf,
+}
 
 /// Server configuration loaded from a simple config file or defaults.
 #[derive(Debug)]
@@ -72,7 +98,192 @@ impl ServerConfig {
     }
 }
 
-fn handle_connection(mut stream: TcpStream, core: Arc<Mutex<Core>>) -> std::io::Result<()> {
+fn run_http_transfer(state: Arc<Mutex<ServerState>>, transfer: HttpTransfer) {
+    let result = HttpEngine::new().download_to(&transfer.source, &transfer.destination);
+    let mut state = state.lock().expect("server state mutex poisoned");
+    match result {
+        Ok(progress) => {
+            let outcome = state
+                .core
+                .update_progress(&transfer.id, progress)
+                .and_then(|()| state.core.finish_task(&transfer.id, TaskState::Completed));
+            if let Err(error) = outcome {
+                eprintln!("task {} completion failed: {error:?}", transfer.id);
+                if let Err(finish_error) = state.core.finish_task(&transfer.id, TaskState::Failed) {
+                    eprintln!(
+                        "task {} failure state could not be saved: {finish_error:?}",
+                        transfer.id
+                    );
+                }
+            }
+        }
+        Err(error) => {
+            eprintln!("task {} HTTP transfer failed: {error}", transfer.id);
+            if let Err(finish_error) = state.core.finish_task(&transfer.id, TaskState::Failed) {
+                eprintln!(
+                    "task {} failure state could not be saved: {finish_error:?}",
+                    transfer.id
+                );
+            }
+        }
+    }
+    state.active_http.remove(&transfer.id);
+    state.active_destinations.remove(&transfer.destination_path);
+}
+
+fn checked_destination(destination: &str, data_dir: &Path) -> io::Result<PathBuf> {
+    let destination = Path::new(destination);
+    if !matches!(
+        destination.components().next_back(),
+        Some(Component::Normal(_))
+    ) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "download destination must name a file",
+        ));
+    }
+    let parent = destination
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let path = std::fs::canonicalize(parent)?.join(
+        destination
+            .file_name()
+            .expect("validated destination has a file name"),
+    );
+    if path.starts_with(data_dir) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "download destination cannot be inside the server data directory",
+        ));
+    }
+    match std::fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "download destination cannot be a symbolic link",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    if path.to_str().is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "download destination path must be valid UTF-8",
+        ));
+    }
+    Ok(path)
+}
+
+fn reply_error(request: &RpcRequest, error: RpcErrorObject) -> Option<RpcResponse> {
+    request
+        .id
+        .clone()
+        .map(|id| RpcResponse::error(Some(id), error))
+}
+
+fn start_http_task(state: &Arc<Mutex<ServerState>>, request: &RpcRequest) -> Option<RpcResponse> {
+    let mut locked = state.lock().expect("server state mutex poisoned");
+    let Some(next_id) = locked
+        .core
+        .scheduler
+        .next_queued_task_matching(|id| {
+            locked.core.tasks.get(id).is_some_and(|task| {
+                matches!(
+                    locked.core.resolve_source(task.source.as_str()),
+                    Ok(result) if matches!(result.kind, ResolveKind::Http | ResolveKind::Https)
+                ) && checked_destination(task.destination.as_str(), &locked.data_dir)
+                    .is_ok_and(|path| !locked.active_destinations.contains(&path))
+            })
+        })
+        .cloned()
+    else {
+        let error = if locked.core.scheduler.next_queued_task().is_some() {
+            RpcErrorObject::invalid_params(
+                "no queued HTTP/HTTPS task has an available, permitted destination",
+            )
+        } else {
+            RpcErrorObject::task_not_found("no queued task")
+        };
+        return reply_error(request, error);
+    };
+    let task = locked.core.tasks.get(&next_id).expect("queued task exists");
+    let source = task.source.as_str().to_owned();
+    let destination_path = checked_destination(task.destination.as_str(), &locked.data_dir)
+        .expect("matching queued task has a permitted destination");
+    let destination = destination_path
+        .to_str()
+        .expect("RPC destination path is valid UTF-8")
+        .to_owned();
+    let id = match locked.core.claim_queued(&next_id) {
+        Ok(true) => next_id,
+        Ok(false) => return reply_error(request, RpcErrorObject::task_not_found("no queued task")),
+        Err(error) => {
+            return reply_error(
+                request,
+                RpcErrorObject::internal_error(format!("{error:?}")),
+            );
+        }
+    };
+    locked.active_http.insert(id.clone());
+    locked.active_destinations.insert(destination_path.clone());
+    drop(locked);
+
+    let transfer = HttpTransfer {
+        id: id.clone(),
+        source,
+        destination,
+        destination_path: destination_path.clone(),
+    };
+    let worker_state = Arc::clone(state);
+    if let Err(error) = std::thread::Builder::new()
+        .name(format!("nexum-http-{id}"))
+        .spawn(move || run_http_transfer(worker_state, transfer))
+    {
+        let mut locked = state.lock().expect("server state mutex poisoned");
+        locked.active_http.remove(&id);
+        locked.active_destinations.remove(&destination_path);
+        let _ = locked.core.finish_task(&id, TaskState::Failed);
+        return reply_error(request, RpcErrorObject::internal_error(error.to_string()));
+    }
+    request.id.clone().map(|request_id| {
+        RpcResponse::success(Some(request_id), serde_json::Value::String(id.to_string()))
+    })
+}
+
+fn dispatch_server_request(
+    state: &Arc<Mutex<ServerState>>,
+    request: &RpcRequest,
+) -> Option<RpcResponse> {
+    if request.method == "task.start" {
+        return start_http_task(state, request);
+    }
+
+    let mut locked = state.lock().expect("server state mutex poisoned");
+    if matches!(
+        request.method.as_str(),
+        "task.pause" | "task.resume" | "task.remove"
+    ) && let Some(id) = request
+        .params
+        .as_ref()
+        .and_then(|params| params.get("id"))
+        .and_then(serde_json::Value::as_str)
+        && locked.active_http.contains(&TaskId::from(id))
+    {
+        return reply_error(
+            request,
+            RpcErrorObject::invalid_params(
+                "active HTTP transfers cannot be paused, resumed, or removed",
+            ),
+        );
+    }
+    RpcDispatcher::dispatch(&mut locked.core, request)
+}
+
+fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<ServerState>>) -> io::Result<()> {
     let reader_stream = stream.try_clone()?;
     let reader = BufReader::new(reader_stream);
 
@@ -95,15 +306,10 @@ fn handle_connection(mut stream: TcpStream, core: Arc<Mutex<Core>>) -> std::io::
         }
 
         let response = match parse_request(&line) {
-            Ok(request) => {
-                let mut core = core.lock().expect("core mutex poisoned");
-                RpcDispatcher::dispatch(&mut *core, &request)
-            }
+            Ok(request) => dispatch_server_request(&state, &request),
             Err(error) => {
-                let response = nexum_protocol::RpcResponse::error(
-                    None,
-                    nexum_protocol::RpcErrorObject::parse_error(error.to_string()),
-                );
+                let response =
+                    RpcResponse::error(None, RpcErrorObject::parse_error(error.to_string()));
                 Some(response)
             }
         };
@@ -214,7 +420,53 @@ fn print_usage() {
     eprintln!("  --help, -h          Show this help");
 }
 
-fn main() -> std::io::Result<()> {
+fn lock_data_dir(data_dir: &Path) -> io::Result<File> {
+    std::fs::create_dir_all(data_dir).map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!(
+                "cannot create data directory {}: {error}",
+                data_dir.display()
+            ),
+        )
+    })?;
+    let lock_path = data_dir.join(LOCK_FILE);
+    let lock_file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "cannot open data directory lock {}: {error}",
+                    lock_path.display()
+                ),
+            )
+        })?;
+    lock_file.try_lock().map_err(|error| {
+        io::Error::other(format!(
+            "cannot acquire data directory lock {}: {error}",
+            lock_path.display()
+        ))
+    })?;
+    Ok(lock_file)
+}
+
+fn open_core(data_dir: &Path) -> io::Result<ServerCore> {
+    let database_path = data_dir.join(DATABASE_FILE);
+    let repository = SqliteRepository::open(&database_path)
+        .map_err(|error| io::Error::other(format!("{}: {error}", database_path.display())))?;
+    let mut core = Core::with_repository(SchedulerConfig::default(), repository)
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    core.recover()
+        .map_err(|error| io::Error::other(format!("task recovery failed: {error:?}")))?;
+    Ok(core)
+}
+
+fn main() -> io::Result<()> {
     let (config, _config_path, show_version, show_help) = parse_cli_flags();
 
     if show_version {
@@ -228,15 +480,15 @@ fn main() -> std::io::Result<()> {
         return Ok(());
     }
 
-    // Ensure data directory exists
-    std::fs::create_dir_all(&config.data_dir).ok();
-
+    let _data_dir_lock = lock_data_dir(&config.data_dir)?;
+    let state = Arc::new(Mutex::new(ServerState {
+        core: open_core(&config.data_dir)?,
+        data_dir: std::fs::canonicalize(&config.data_dir)?,
+        active_http: HashSet::new(),
+        active_destinations: HashSet::new(),
+    }));
     let address = format!("127.0.0.1:{}", config.port);
     let listener = TcpListener::bind(&address)?;
-    let core = Arc::new(Mutex::new(
-        Core::new(nexum_core::nexum_scheduler::SchedulerConfig::default())
-            .map_err(|error| std::io::Error::other(error.to_string()))?,
-    ));
 
     eprintln!("Nexum server listening on {address}");
     eprintln!(
@@ -247,9 +499,9 @@ fn main() -> std::io::Result<()> {
     for connection in listener.incoming() {
         match connection {
             Ok(stream) => {
-                let core = Arc::clone(&core);
+                let state = Arc::clone(&state);
                 std::thread::spawn(move || {
-                    if let Err(error) = handle_connection(stream, core) {
+                    if let Err(error) = handle_connection(stream, state) {
                         eprintln!("connection error: {error}");
                     }
                 });

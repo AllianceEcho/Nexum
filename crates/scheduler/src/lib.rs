@@ -159,7 +159,7 @@ impl From<TaskServiceError> for SchedulerError {
 ///
 /// The scheduler decides which queued tasks may start. It does not execute
 /// network I/O and therefore remains independent of a concrete download engine.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Scheduler {
     config: SchedulerConfig,
     queue: VecDeque<QueueEntry>,
@@ -208,18 +208,36 @@ impl Scheduler {
         &mut self,
         task_service: &mut TaskService,
     ) -> Result<Option<TaskId>, SchedulerError> {
-        if self.active_tasks >= self.config.max_concurrent_tasks {
-            return Ok(None);
-        }
-        let Some(entry) = self.queue.pop_front() else {
+        let Some(id) = self.next_queued_task().cloned() else {
             return Ok(None);
         };
-        task_service.transition(&entry.task_id, TaskState::Downloading)?;
+        self.claim_queued(task_service, &id)?;
+        Ok(Some(id))
+    }
+
+    /// Reserves a particular queued task if a concurrency slot is available.
+    pub fn claim_queued(
+        &mut self,
+        task_service: &mut TaskService,
+        task_id: &TaskId,
+    ) -> Result<bool, SchedulerError> {
+        if self.active_tasks >= self.config.max_concurrent_tasks {
+            return Ok(false);
+        }
+        let Some(index) = self
+            .queue
+            .iter()
+            .position(|entry| &entry.task_id == task_id)
+        else {
+            return Ok(false);
+        };
+        task_service.transition(task_id, TaskState::Downloading)?;
+        self.queue.remove(index);
         self.active_tasks += 1;
         self.events.push(SchedulerEvent::Started {
-            task_id: entry.task_id.clone(),
+            task_id: task_id.clone(),
         });
-        Ok(Some(entry.task_id))
+        Ok(true)
     }
 
     pub fn pause(
@@ -314,6 +332,36 @@ impl Scheduler {
     pub fn queued_len(&self) -> usize {
         self.queue.len()
     }
+
+    /// Returns the next task eligible to start without changing the queue.
+    pub fn next_queued_task(&self) -> Option<&TaskId> {
+        self.next_queued_task_matching(|_| true)
+    }
+
+    /// Returns the first eligible queued task that matches a caller's filter.
+    pub fn next_queued_task_matching(
+        &self,
+        mut predicate: impl FnMut(&TaskId) -> bool,
+    ) -> Option<&TaskId> {
+        if self.active_tasks >= self.config.max_concurrent_tasks {
+            None
+        } else {
+            self.queue
+                .iter()
+                .map(|entry| &entry.task_id)
+                .find(|id| predicate(id))
+        }
+    }
+
+    /// Forgets a removed task and releases any scheduler capacity it held.
+    pub fn forget_task(&mut self, task_id: &TaskId, state: TaskState) {
+        self.queue.retain(|entry| &entry.task_id != task_id);
+        if state == TaskState::Downloading {
+            self.active_tasks = self.active_tasks.saturating_sub(1);
+        }
+        self.retry_counts.remove(task_id);
+    }
+
     pub fn active_len(&self) -> usize {
         self.active_tasks
     }

@@ -4,14 +4,14 @@
 
 > 用于下载任务管理与客户端集成的 Rust Workspace。
 
-Nexum 仍在开发中。目前可运行的主线是用于创建和管理任务的本地 TCP JSON-RPC 服务。Server 使用内存仓库与内存引擎：启动任务只会改变状态，**不会**将来源下载到目标路径。
+Nexum 仍在开发中。目前可运行的主线是用于创建和管理任务的本地 TCP JSON-RPC 服务。Server 使用 SQLite 保存任务。启动已排队的 HTTP/HTTPS 任务会通过后台 Worker 下载到目标路径。
 
 [![CI](https://github.com/liveait/Nexum/actions/workflows/ci.yml/badge.svg)](https://github.com/liveait/Nexum/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## 当前状态
 
-CLI 和早期 Tauri Desktop 客户端可调用本地 Server；Desktop 需要单独运行 Server。SQLite 仓库和 HTTP 引擎已有库实现，但 Server 尚未选用。Browser Extension 原型请求 HTTP `/jsonrpc`，而 Server 仅提供 TCP，因此扩展目前无法向它提交任务。
+CLI 和早期 Tauri Desktop 客户端可调用本地 Server；Desktop 需要单独运行 Server。Server 在数据目录（默认 `./data`）下打开 `nexum.sqlite`，启动时恢复已保存的任务。`task.start` 对 HTTP/HTTPS 任务执行真实下载。Magnet 和本地文件来源可以创建任务，但尚无传输路径。Browser Extension 原型请求 HTTP `/jsonrpc`，而 Server 仅提供 TCP，因此扩展目前无法向它提交任务。
 
 运行中的 Server 尚未启用认证、TLS、限流、可执行插件或真实媒体处理。代码边界与调用路径见[架构设计](docs/ARCHITECTURE.zh-CN.md)，后续集成工作见[开发计划](docs/DEVELOPMENT_PLAN.zh-CN.md)。
 
@@ -26,13 +26,13 @@ cargo run -p nexum-server
 在另一个终端使用 CLI：
 
 ```bash
-cargo run -p nexum-cli -- task create task-1 https://example.com/file.bin ./file.bin
+cargo run -p nexum-cli -- task create task-1 https://example.com/ ./example.html
 cargo run -p nexum-cli -- task queue task-1
 cargo run -p nexum-cli -- task start
 cargo run -p nexum-cli -- task list
 ```
 
-`task start` 会通过内存引擎把排队任务标记为 `Downloading`，不会创建 `./file.bin`；Server 退出后任务也会丢失。Server 默认绑定 `127.0.0.1:39100`，可用 `--port PORT` 修改端口，CLI 可用 `--server ADDR` 修改连接地址。即使设置 `--require-auth`，Server 也不会强制认证，因此不要将它暴露到不可信网络。客户端设置、完整 Rust 检查命令和平台依赖见[开发指南](docs/DEVELOPMENT.zh-CN.md)。
+`task start` 在启动 HTTP Worker 后即返回。成功后会写入 `./example.html`、记录最终下载字节数，并将任务标记为 `Completed`；此前 `task list` 可能显示 `Downloading`。完整响应先写入临时 `.part` 文件，完成后才替换目标文件。目前没有增量进度、自动派发重试，也不能暂停或取消正在执行的 HTTP 传输。Server 重启后任务仍在，但中断的 `Downloading` 任务会重置为 `Queued`，再次调用 `task start` 才会从头下载。Server 默认绑定 `127.0.0.1:39100`，可用 `--port PORT` 修改端口，CLI 可用 `--server ADDR` 修改连接地址。即使设置 `--require-auth`，Server 也不会强制认证，因此不要将它暴露到不可信网络。客户端设置、完整 Rust 检查命令和平台依赖见[开发指南](docs/DEVELOPMENT.zh-CN.md)。
 
 ## 文档与贡献
 

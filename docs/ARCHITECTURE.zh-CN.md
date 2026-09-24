@@ -9,18 +9,19 @@ CLI ───────────────┐
 Desktop (Tauri) ───┼── 基于 TCP 的按行 JSON-RPC 2.0
                    ▼
                本地 Server
-                   │
-              RpcDispatcher
-                   │
-                   ▼
-                 Core
-       ┌───────────┼────────────┐
+              /          \
+      RpcDispatcher    task.start（HTTP/HTTPS）
+              │          │              \
+              └─────►  Core          HTTP Worker ── HttpEngine ── 目标文件
+                       ▲                   │
+                       └── 最终结果 ───────┘
+                 ┌─────┼───────────┐
   TaskService   Scheduler   TaskRepository
        │            │              │
-  Task Events   Queue/Events  InMemory (Server)
-                    │           SQLite (可注入)
+  Task Events   Queue/Events  SQLite (Server)
+                    │           InMemory (可注入)
                     ▼
-              EngineRegistry
+              EngineRegistry（Core 库 API）
              /              \
        InMemoryEngine     HttpEngine
 
@@ -47,7 +48,7 @@ Server 默认监听 `127.0.0.1:39100`。当前实现始终绑定回环地址，`
 
 ## 任务路径
 
-`Core::create_task` 经 `ResolverRegistry` 校验来源，创建 `DownloadTask` 并写入注入的 Repository。`queue_task` 将任务加入 Scheduler。`start_next` 显式取出下一个任务，默认选用 `InMemoryEngine`；`start_next_with_engine("http")` 只是库 API，不是 JSON-RPC 方法或 CLI 选项。因此默认 Server 调用 `task.start` 时不会下载文件。
+`Core::create_task` 经 `ResolverRegistry` 校验来源，创建 `DownloadTask` 并写入注入的 Repository。`queue_task` 将任务加入 Scheduler。Server 的 `task.start` 选取优先级最高的已排队 HTTP/HTTPS 任务，占用一个 Scheduler 并发槽，并在 Core 锁之外启动 HTTP Worker。RPC 会在传输结束前返回任务 ID。Magnet 和本地文件任务因没有兼容的传输 Engine 而继续排队，不会阻塞排在其后的 HTTP/HTTPS 任务。`Core::start_next` 对库调用者仍默认使用内存 Engine；`start_next_with_engine("http")` 也是库 API。
 
 任务状态机允许：
 
@@ -60,19 +61,19 @@ Completed   → Queued
 Failed      → Retrying → Queued
 ```
 
-Scheduler 在调用 `start_next` 或 `resume` 时检查并发数，并按重试策略重新入队失败任务。带宽策略目前只计算限速值，HTTP 传输并未应用。Task 和 Scheduler Events 在 Core 中收集、可取出，但 Server 没有向客户端发布。
+Scheduler 在领取任务或恢复任务时检查并发数。HTTP Worker 成功时持久化最终字节数并将任务标记为 `Completed`。传输失败后，Scheduler 在重试预算内重新入队，但 Server 不会自动启动重试；预算耗尽后任务保持 `Failed`。带宽策略目前只计算限速值，HTTP 传输并未应用。Task 和 Scheduler Events 在 Core 中收集、可取出，但 Server 没有向客户端发布。
 
 ## Engine 与来源
 
-Resolver 接受 HTTP/HTTPS URL、包含 `xt=urn:btih:` 参数的 Magnet URI，以及存在的本地路径；它不会校验 Magnet Hash 本身。解析来源不会自动选择对应 Engine。`HttpEngine` 可以将阻塞式 GET 响应写入目标文件，最多跟随五次重定向；它不支持暂停/恢复，在调用阻塞期间也不提供增量进度。InMemory Engine 只模拟生命周期，不传输字节。当前没有 Magnet 或本地文件传输 Engine。
+Resolver 接受 HTTP/HTTPS URL、包含 `xt=urn:btih:` 参数的 Magnet URI，以及存在的本地路径；它不会校验 Magnet Hash 本身。Server 仅将 HTTP/HTTPS 路由到传输 Engine，并拒绝数据目录内的目标、符号链接目标，以及指向同一规范路径的并发活动传输。`HttpEngine` 执行阻塞式 GET，最多跟随五次重定向，连接超时为 10 秒，请求超时为 30 分钟。它在目标目录旁的 `.part` 文件中暂存响应，若服务端声明了内容长度则会核对字节数，随后同步并重命名完整文件。普通传输错误会删除暂存文件并保留已有目标文件；进程突然退出可能留下 `.part` 文件。HTTP 不支持暂停/恢复；传输活跃时 Server 会拒绝暂停、恢复和删除该任务。Worker 运行时没有增量进度，也没有取消路径。InMemory Engine 只模拟生命周期，不传输字节。当前没有 Magnet 或本地文件传输 Engine。
 
 ## 持久化与恢复
 
-`Core<R>` 接受 `TaskRepository`。SQLite Repository 持久化任务元数据和进度，`Core::recover` 恢复已保存任务；原先执行中、暂停或重试中的任务会重新排队。这些路径有库级测试。Server 当前创建的是使用 `InMemoryRepository` 的 `Core::new`，也没有调用 `recover`；其 `data_dir` 设置只用于创建目录。重启 Server 后任务不会保留。
+`Core<R>` 接受 `TaskRepository`。Server 在进程运行期间锁住 `data_dir/nexum.lock`，在 `data_dir/nexum.sqlite`（默认 `./data/nexum.sqlite`）打开数据库，并在接受连接前调用 `Core::recover`。第二个使用同一数据目录的 Server 无法启动。SQLite Repository 持久化任务元数据和进度。恢复时，已创建、已完成和失败的任务保持原状态；已排队任务继续排队，原先下载中、暂停或重试中的任务在内存与 SQLite 中重置为 `Queued`。Scheduler 队列按普通优先级重建；原优先级、顺序和重试次数不持久化，任务也不会自动启动。重启后的 HTTP 传输会从零开始。创建目录、获取锁、打开数据库或恢复失败会使 Server 启动失败。
 
 ## Protocol 与客户端
 
-Server 每次从 TCP 连接读取一行 JSON-RPC 请求，对带 `id` 的请求写回一行响应。Dispatcher 支持 `task.get`、`task.list`、`task.create`、`task.queue`、`task.start`、`task.pause`、`task.resume`、`task.remove`、`server.version` 和 `server.auth`，没有通用的 Task Update 方法。Protocol 包含 V1 版本字段和版本查询方法，但没有协商功能集合；除 JSON-RPC `2.0` 信封校验外，也没有版本强制校验。crate 中已有事件信封转换和缓存，Server 尚无订阅或推送通道。
+Server 每次从 TCP 连接读取一行 JSON-RPC 请求，对带 `id` 的请求写回一行响应。它会在 Dispatcher 之前处理 `task.start` 和活跃传输保护；Dispatcher 支持 `task.get`、`task.list`、`task.create`、`task.queue`、`task.start`、`task.pause`、`task.resume`、`task.remove`、`server.version` 和 `server.auth`，没有通用的 Task Update 方法。Protocol 包含 V1 版本字段和版本查询方法，但没有协商功能集合；除 JSON-RPC `2.0` 信封校验外，也没有版本强制校验。crate 中已有事件信封转换和缓存，Server 尚无订阅或推送通道。
 
 CLI 通过 TCP 协议管理任务、查询 Server。Tauri 2 + React Desktop 通过 Tauri 命令调用 TCP JSON-RPC，包含任务列表、添加与控制视图。它在操作后或 Server 地址变更时刷新，没有定时轮询或事件推送；Server 地址只保存在组件状态。Manifest V3 Browser 扩展有右键菜单和链接标记 UI，但发送流程向 `/jsonrpc` 发 HTTP 请求，目前没有兼容端点。Popup 写入 Storage 的 `server` 键，后台脚本却读取 `address` 字段，因此保存的地址不会生效。扩展也没有设备选择。
 

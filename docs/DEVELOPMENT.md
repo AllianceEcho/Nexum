@@ -52,14 +52,16 @@ It binds to `127.0.0.1:39100` by default and serves newline-delimited JSON-RPC 2
 
 ```bash
 cargo run -p nexum-cli -- task list
-cargo run -p nexum-cli -- task create task-1 https://example.com/file.bin ./file.bin
+cargo run -p nexum-cli -- task create task-1 https://example.com/ ./example.html
 cargo run -p nexum-cli -- task queue task-1
 cargo run -p nexum-cli -- task start
 ```
 
 The built binaries are named `nexum-server` and `nexum-cli`. Use `cargo run -p nexum-server -- --help` and `cargo run -p nexum-cli -- --help` for current flags and commands. The CLI defaults to `127.0.0.1:39100`; put `--server ADDR` before `task` or `server` to override it.
 
-The running server constructs `Core` with an in-memory repository, so tasks do not survive a restart. Its `--data-dir` option only creates a directory at present. `--max-connections` is displayed but not enforced, and `--require-auth` does not enable authentication; `server.auth` reports `none`. The exposed `task start` path uses the in-memory engine and does not download the example file.
+The server stores task metadata and progress in `nexum.sqlite` under `--data-dir` (default `./data`, relative to the server's working directory). It creates the directory if needed and holds a lock on `nexum.lock` there until exit, so only one server can use that directory. It opens the database and recovers tasks before listening; directory, lock, database, or recovery errors stop startup. On restart, previously downloading, paused, or retrying tasks become queued in memory and in SQLite, but the server does not start them automatically. `--max-connections` is displayed but not enforced, and `--require-auth` does not enable authentication; `server.auth` reports `none`.
+
+`task start` selects a queued HTTP/HTTPS task and returns its ID after launching a worker. Check `task list` again for `Completed` and the downloaded file; completion is asynchronous. The server rejects destinations inside its data directory, symbolic-link destinations, and overlapping active destinations. The worker stages a complete response in a `.part` file in the destination directory before renaming it into place. A failed transfer keeps an existing destination, logs an error on the server, and is queued again while the retry policy allows; another `task start` is required to retry it. Progress resets to zero when the task is claimed, then receives its final byte count only after a successful transfer. Active HTTP transfers cannot be paused, resumed, or removed. Magnet and local-file sources have no transfer engine yet. Restarted transfers begin from byte zero.
 
 ## Desktop
 
