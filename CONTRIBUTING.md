@@ -37,6 +37,40 @@ A PR should explain:
 
 Keep commits focused. Reviewers will prioritize correctness, maintainability, test coverage, and long-term compatibility.
 
+## Submission Standards
+
+### Commit Format
+
+Use Conventional Commits:
+
+```
+type: description
+```
+
+| type     | Description                      |
+| -------- | -------------------------------- |
+| `feat`   | New feature                      |
+| `fix`    | Bug fix                          |
+| `docs`   | Documentation change             |
+| `style`  | Code formatting (no logic change) |
+| `refactor` | Refactoring                    |
+| `test`   | Test-related changes             |
+| `chore`  | Build / toolchain / auxiliary    |
+
+Type is followed by a space and colon. Description should be in English, no trailing period.
+
+### Local CI
+
+Run the following commands locally before submitting:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+All three must pass.
+
 ## Technical Discussion
 
 Strong technical disagreement is welcome. Discuss code, design, evidence, and trade-offs rather than contributors.
