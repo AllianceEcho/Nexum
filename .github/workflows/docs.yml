@@ -1,0 +1,77 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docs-consistency:
+    name: Docs consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check multi-language documentation consistency
+        run: |
+          cd "$(git rev-parse --show-toplevel)"
+
+          # Extract the "structural profile" of a markdown file:
+          # H2 count, H3 count, unordered list items, ordered list items,
+          # code blocks, blockquotes, tables.
+          # Only structure is compared — actual text is ignored.
+          extract_profile() {
+            local file="$1"
+            local h2 h3 ul ol code bq tbl
+
+            h2=$(grep -c '^##[^#]' "$file" 2>/dev/null) || h2=0
+            h3=$(grep -c '^###' "$file" 2>/dev/null) || h3=0
+            ul=$(grep -c '^\s*[-*•]' "$file" 2>/dev/null) || ul=0
+            ol=$(grep -c '^\s*[0-9]\+[\.)]\s' "$file" 2>/dev/null) || ol=0
+            code=$(grep -c '^\s*```' "$file" 2>/dev/null) || code=0
+            bq=$(grep -c '^\s*>' "$file" 2>/dev/null) || bq=0
+            tbl=$(grep -c '^\s*|' "$file" 2>/dev/null) || tbl=0
+
+            echo "${h2}:${h3}:${ul}:${ol}:${code}:${bq}:${tbl}"
+          }
+
+          # Find all .md files (exclude .github, node_modules, target, etc.)
+          md_files=$(find . -name "*.md" \
+            -not -path "./.github/*" \
+            -not -path "*/target/*" \
+            -not -path "*/.git/*" \
+            -not -path "*/.tauri/*" \
+            -not -path "*/.claude/*" \
+            -not -path "*/node_modules/*" \
+            2>/dev/null | sort)
+
+          errors=0
+          for en_file in $md_files; do
+            zh_file="${en_file%.md}.zh-CN.md"
+
+            # Only check pairs where both files exist
+            if [[ ! -f "$en_file" || ! -f "$zh_file" ]]; then
+              continue
+            fi
+
+            en_profile=$(extract_profile "$en_file")
+            zh_profile=$(extract_profile "$zh_file")
+
+            if [[ "$en_profile" != "$zh_profile" ]]; then
+              echo "ERROR: Structural profile mismatch in $(basename "$en_file")"
+              echo "  EN: $en_profile  (H2:H3:UL:OL:CODE:BQ:TABLE)"
+              echo "  ZH: $zh_profile (H2:H3:UL:OL:CODE:BQ:TABLE)"
+              errors=$((errors + 1))
+            fi
+          done
+
+          if [[ $errors -gt 0 ]]; then
+            echo "::error::Found $errors documentation pair(s) with structural mismatch. Ensure English and Chinese docs have the same number of headings, lists, code blocks, blockquotes, and tables."
+            exit 1
+          fi
+
+          echo "All documentation pairs are structurally consistent."
