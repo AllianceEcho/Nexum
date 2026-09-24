@@ -37,6 +37,40 @@ PR 应说明：
 
 保持提交小而聚焦。维护者会优先关注正确性、可维护性、测试覆盖和长期兼容性。
 
+## 提交规范
+
+### 格式
+
+提交信息使用 Conventional Commits 格式：
+
+```
+type: description
+```
+
+| 类型 | 说明 |
+| ---- | ---- |
+| `feat` | 新功能 |
+| `fix` | Bug 修复 |
+| `docs` | 文档变更 |
+| `style` | 代码格式（不影响逻辑） |
+| `refactor` | 重构 |
+| `test` | 测试相关 |
+| `chore` | 构建 / 工具链 / 其他辅助变更 |
+
+类型后加空格和冒号，描述使用中文。
+
+### 本地 CI 检查
+
+提交前必须在本地跑通以下命令：
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+三项全部通过方可提交。
+
 ## 技术讨论
 
 可以直接、充分地讨论技术方案，也可以提出反对意见。请针对代码、设计和证据讨论，不针对贡献者本人。
