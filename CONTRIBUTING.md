@@ -37,6 +37,8 @@ A PR should explain:
 
 Keep commits focused. Reviewers will prioritize correctness, maintainability, test coverage, and long-term compatibility.
 
+Keep `main` buildable and Core behavior testable without network access; use controlled integration tests for network and engine behavior. Add dependencies for concrete needs, preserve actionable error context, and use structured task/scheduler events as runtime behavior expands. Treat public crate APIs and protocol, storage, and plugin contracts as compatibility boundaries; establish versioning before declaring them stable and document deliberate breaking changes.
+
 ## Submission Standards
 
 ### Commit Format
@@ -47,29 +49,21 @@ Use Conventional Commits:
 type: description
 ```
 
-| type     | Description                      |
-| -------- | -------------------------------- |
-| `feat`   | New feature                      |
-| `fix`    | Bug fix                          |
-| `docs`   | Documentation change             |
-| `style`  | Code formatting (no logic change) |
-| `refactor` | Refactoring                    |
-| `test`   | Test-related changes             |
-| `chore`  | Build / toolchain / auxiliary    |
+| Type | Description |
+| ---- | ----------- |
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `docs` | Documentation change |
+| `style` | Code formatting (no logic change) |
+| `refactor` | Refactoring |
+| `test` | Test-related changes |
+| `chore` | Build / toolchain / auxiliary change |
 
-Type is followed by a space and colon. Description should be in English, no trailing period.
+Place a colon and space after the type. Write the description in English without a trailing period, following the existing commit history.
 
 ### Local CI
 
-Run the following commands locally before submitting:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
-
-All three must pass.
+Before submitting, run the Rust checks in the [Development Guide](docs/DEVELOPMENT.md#rust-checks); they match [CI](.github/workflows/ci.yml). The Rust workspace includes the Tauri crate and needs its platform build dependencies. For frontend or extension changes, also run the applicable package checks in the Development Guide; CI does not run them yet.
 
 ## Technical Discussion
 

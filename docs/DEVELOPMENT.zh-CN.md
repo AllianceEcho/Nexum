@@ -2,60 +2,34 @@
 
 ## 环境
 
-Nexum Core 使用 Rust。客户端界面使用 TypeScript/React，桌面应用使用 Tauri 2。
+Nexum 是使用 Rust 2024 edition 的工作区，桌面客户端采用 Tauri 2。桌面前端使用 TypeScript 和 React；浏览器扩展使用 TypeScript。
 
-建议安装：
+- Rust stable（1.85 或更新版本）、Cargo、`rustfmt` 和 Clippy
+- Node.js LTS 和 pnpm，用于两个前端包
+- 运行或打包原生桌面应用时所需的 Tauri 2 系统依赖及 Tauri CLI
 
-- Rust stable
-- Cargo
-- Node.js LTS
-- pnpm
+Ubuntu CI 在检查 Rust 工作区前安装 `libgtk-3-dev` 和 `libwebkit2gtk-4.1-dev`。本地构建还需满足对应平台的 Tauri 依赖要求。
 
 ## 工作区
 
-Rust workspace 位于根目录：
+根目录 `Cargo.toml` 包含下列全部 crate 和 `apps/desktop/src-tauri`。浏览器扩展是独立的前端包。
 
 ```text
 crates/
-├── core/
-├── domain/
-├── task/
-├── scheduler/
-├── storage/
-├── resolver/
-├── protocol/
-├── plugin/
-├── security/
-├── media/
-└── engine/
-
+  core/ domain/ task/ scheduler/ storage/ resolver/
+  protocol/ plugin/ security/ media/ engine/
 apps/
-├── server/
-├── cli/
-├── desktop/
-└── extension/
+  server/                 # nexum-server 可执行文件
+  cli/                    # nexum-cli 可执行文件
+  desktop/                # React/Vite 和 src-tauri/
+  extension/              # Manifest V3 扩展
 ```
 
-## 开发原则
+保持 UI 逻辑与 Core 分离，避免将具体 Engine 的实现细节放入 Domain Model。行为变化应补充针对性测试，并同步更新受影响文档的中英文版本。需要 RFC 的变更类型见[贡献指南](../CONTRIBUTING.zh-CN.md)。
 
-- 保持模块边界清晰。
-- 公共 API 必须有文档和测试。
-- Core 状态变化必须可测试。
-- 不要让 UI 逻辑进入 Core。
-- 不要让具体 Engine 污染 Domain Model。
-- 破坏性架构变化先提交 RFC。
-- 实现行为变化后同步更新文档。
+## Rust 检查
 
-## 常用命令
-
-```bash
-cargo check --workspace
-cargo test --workspace
-cargo fmt --all
-cargo clippy --workspace --all-targets
-```
-
-与 CI 等价的本地检查：
+在仓库根目录运行与 `.github/workflows/ci.yml` 相同的命令：
 
 ```bash
 cargo fmt --all -- --check
@@ -64,29 +38,54 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-## 运行 Server
+CI 在 Ubuntu 上执行这些 Rust 检查。目前未构建或检查 TypeScript 包，也不生成发布产物。
 
-Server 默认监听 `127.0.0.1:39100`。服务器地址和运行时配置可以通过 Server 命令行参数配置。
+## Server 与 CLI
 
-## 运行 CLI
-
-CLI 默认连接本地 Server，也可以通过 Server 参数选择其他服务器。
-
-示例：
+在一个终端启动本地 Server：
 
 ```bash
-nexum task list
-nexum task create task-1 https://example.com/file.bin ./file.bin
-nexum task queue task-1
-nexum task start
+cargo run -p nexum-server -- --port 39100
 ```
 
-## Desktop 与 Browser
+默认绑定 `127.0.0.1:39100`，通过 TCP 提供以换行符分隔的 JSON-RPC 2.0 服务。在另一个终端运行 CLI：
 
-Desktop 位于 `apps/desktop`，使用 Tauri 2 + React。
+```bash
+cargo run -p nexum-cli -- task list
+cargo run -p nexum-cli -- task create task-1 https://example.com/file.bin ./file.bin
+cargo run -p nexum-cli -- task queue task-1
+cargo run -p nexum-cli -- task start
+```
 
-Browser 集成位于 `apps/extension`，使用 Manifest V3。
+编译出的可执行文件分别名为 `nexum-server` 和 `nexum-cli`。使用 `cargo run -p nexum-server -- --help` 和 `cargo run -p nexum-cli -- --help` 查看当前参数与命令。CLI 默认连接 `127.0.0.1:39100`；如需覆盖地址，将 `--server ADDR` 放在 `task` 或 `server` 前面。
 
-## 测试
+当前 Server 使用内存仓库构建 `Core`，重启后任务不会保留。`--data-dir` 目前只创建目录；`--max-connections` 仅显示配置值，不限制连接数；`--require-auth` 不会启用身份验证，`server.auth` 返回 `none`。对外的 `task start` 路径使用内存 Engine，不会下载示例文件。
 
-Core 行为应保持无需网络即可测试。网络和 Engine 行为应放在受控的集成测试中。
+## Desktop
+
+在 `apps/desktop` 启动 Vite 前端：
+
+```bash
+cd apps/desktop
+pnpm install
+pnpm dev
+```
+
+Vite 使用 `1420` 端口。前端调用 Tauri 命令，因此测试完整应用还需要运行中的 Nexum Server 和原生 Tauri 窗口。安装 Tauri 2 CLI 后，保持 Vite 运行，并在另一个终端从 `apps/desktop` 执行 `cargo tauri dev`。`pnpm build` 会执行 TypeScript 编译和 Vite 构建；这是 Rust CI 之外的检查。
+
+## 浏览器扩展
+
+在 `apps/extension` 执行：
+
+```bash
+cd apps/extension
+pnpm install
+pnpm lint
+pnpm build
+```
+
+扩展的 `pnpm dev` 会监听文件变化并重新构建。以 `apps/extension` 为目录加载未打包扩展：根目录的 `manifest.json` 引用 `dist/` 下的构建产物和 `icons/` 下的图标。
+
+扩展当前向 `/jsonrpc` 发送 HTTP 请求，而 `nexum-server` 只接受 TCP JSON-RPC。在增加 HTTP 桥接或统一传输方式之前，扩展的发送到 Nexum 操作无法通过当前 Server 创建任务。
+
+英文版见 [DEVELOPMENT.md](DEVELOPMENT.md)。

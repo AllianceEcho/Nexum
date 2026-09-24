@@ -1,178 +1,119 @@
 # Nexum Development Plan
 
-## 1. Development Principles
+This plan distinguishes code-level foundations from an end-to-end feature available through the current server and clients. Checked items are present in the repository; unchecked items still need implementation or wiring. Planned work describes direction, not a fixed release schedule. See [Architecture](ARCHITECTURE.md) for current call paths and [Contributing](../CONTRIBUTING.md) for engineering and submission guidance.
 
-Nexum will be developed from the core outward.
+## 1. Milestones
 
-1. Define the domain model before building UI.
-2. Define the task lifecycle before implementing scheduling.
-3. Define the protocol around stable core operations.
-4. Keep persistence behind explicit interfaces.
-5. Add engine integrations only after the core abstractions are testable.
-6. Every milestone should leave the repository in a buildable and testable state.
+### Phase 0 - Project Foundation
 
-## 2. Milestones
-
-### Phase 0 — Project Foundation
-
-- [x] Repository structure
-- [x] MIT license
-- [x] Contribution and governance documents
+- [x] Repository structure, MIT license, and contribution/governance documents
 - [x] English and Simplified Chinese documentation
-- [x] Rust workspace
-- [x] GitHub CI
-- [x] Verified clean workspace build on CI
-- [x] Formal formatting and linting policy
+- [x] Rust workspace with server, CLI, desktop Tauri crate, and core crates
+- [x] GitHub CI workflow configured for formatting, workspace check/test, and Clippy
 
-### Phase 1 — Domain & Task Core
+### Phase 1 - Domain and Task Core
 
-- [x] Domain model
-- [x] Task state machine
-- [x] Explicit transition validation
-- [x] Task service
-- [x] Task events
-- [x] Unit tests
+- [x] Domain value types and download task model
+- [x] Validated task state machine
+- [x] In-memory task service and task events
+- [x] Unit tests for task lifecycle and transitions
 
-### Phase 2 — Scheduler
+### Phase 2 - Scheduler
 
-- [x] Queue abstraction
-- [x] Concurrency limits
-- [x] Priority
-- [x] Retry policy
-- [x] Pause/resume scheduling
-- [x] Bandwidth policy abstraction
-- [x] Scheduler events
+- [x] Priority queue and concurrent-task limit
+- [x] Retry policy and pause/resume operations
+- [x] Bandwidth-policy interface and limit calculation
+- [x] Scheduler events and controlled unit tests
+- [ ] Apply calculated bandwidth limits to transfers
+- [ ] Automatically dispatch queued work and advance running tasks in the server
 
-### Phase 3 — Storage
+### Phase 3 - Storage
 
-- [x] Repository traits
-- [x] In-memory repository
-- [x] SQLite implementation
-- [x] Schema versioning
-- [x] Migration mechanism
-- [x] Task persistence
-- [x] Restart recovery
+- [x] `TaskRepository` and in-memory implementation
+- [x] SQLite task metadata/progress repository with schema version and migration
+- [x] `Core::recover` to rebuild queued work, covered by library tests
+- [ ] Open SQLite and call recovery in the server startup path
+- [ ] Verify task continuity across a real server restart
 
-### Phase 4 — Resolver
+### Phase 4 - Resolver
 
-- [x] Resolver trait and request/result model
-- [x] HTTP/HTTPS classification and validation
-- [x] Magnet classification and validation
-- [x] Local source handling
-- [x] Resolver registry
-- [x] Resolver error model
-- [x] Resolver tests
+- [x] Resolver request/result/error model and registry
+- [x] HTTP/HTTPS validation, magnet `xt=urn:btih:` parameter presence check, and existing-local-path validation
+- [x] Resolver tests and Core task-creation validation
+- [ ] Route each resolved source to a compatible engine
+- [ ] Add actual magnet and local-source transfer paths
 
-### Phase 5 — Engine Adapter
+### Phase 5 - Engine Adapter
 
-- [x] Adapter trait
-- [x] Engine capabilities
-- [x] Task and progress mapping
-- [x] Pause/resume/remove mapping
-- [x] InMemory engine
-- [x] HTTP engine with redirect following
+- [x] Adapter capabilities, task mapping, and engine registry
+- [x] Simulated in-memory engine and blocking HTTP GET engine with redirect following
 - [x] Controlled engine tests
+- [ ] Select the HTTP engine from server/CLI/Desktop task operations; `task.start` currently uses the in-memory engine
+- [ ] Add nonblocking transfer progress, cancellation, and supported pause/resume behavior for real transfers
 
-### Phase 6 — Nexum Protocol
+### Phase 6 - Nexum Protocol and Security
 
-- [x] JSON-RPC 2.0 envelope
-- [x] Request/response model
-- [x] Task APIs
-- [x] Transport-neutral event envelopes
-- [x] Error codes
-- [x] Protocol version negotiation
-- [x] Authentication boundary
-- [x] Compatibility tests
+- [x] JSON-RPC 2.0 request/response and error objects
+- [x] Task create/get/list/queue/start/pause/resume/remove and server inspection methods
+- [x] V1 version type, request field, and `server.version` method
+- [x] Task/scheduler event envelopes and buffering
+- [x] Credential, TLS, and rate-limit types with protocol/security unit tests
+- [ ] Enforce protocol compatibility beyond envelope validation
+- [ ] Publish events through a server transport and expose them to clients
+- [ ] Validate credentials and enforce authentication/TLS/rate limiting where configured
 
-### Phase 7 — Server & CLI
+### Phase 7 - Server and CLI
 
-- [x] TCP server process
-- [x] Local server mode
-- [x] CLI JSON-RPC client
-- [x] Task creation and control
-- [x] Configured server connection
-- [x] Authentication and server inspection commands
-- [x] Server configuration
+- [x] Loopback TCP server using line-delimited JSON-RPC
+- [x] CLI TCP client with task-control, address configuration, and server inspection commands
+- [x] Server CLI flags and key-value configuration parsing
+- [ ] Apply `require_auth` and `max_connections`; both are currently parsed but not enforced
+- [ ] Use `data_dir` for SQLite persistence and restart recovery
+- [ ] Make a normal `task.start` run a real download for supported sources
 
-### Phase 8 — Desktop
+### Phase 8 - Desktop
 
-- [x] Tauri 2 shell
-- [x] React application
-- [x] Task list and detail views
-- [x] Add-download flow
-- [x] Pause/resume/remove
-- [x] Server settings
-- [x] Event-driven/polling updates
+- [x] Tauri 2 + React application and TCP JSON-RPC command bridge
+- [x] Task list, add, queue/start, pause/resume, and remove UI
+- [x] Editable server address and refresh after actions/address changes
+- [ ] Add periodic or event-driven updates for progress and externally changed tasks
+- [ ] Persist server settings and surface connection/action failures reliably
 
-### Phase 9 — Browser Integration
+### Phase 9 - Browser Integration
 
-- [x] Manifest V3 extension
-- [x] Context-menu integration
-- [x] Downloadable-link interception
-- [x] Send-to-Nexum flow
-- [x] Server/device selection
+- [x] Manifest V3 extension shell, link context menu, and downloadable-link badge heuristic
+- [x] Popup field for storing one server address
+- [ ] Connect send-to-Nexum to a supported transport; the extension posts HTTP `/jsonrpc` while the server only speaks TCP
+- [ ] Use the saved `server` address in the background script; it currently reads an `address` field instead
+- [ ] Handle the content script's send message and complete an end-to-end task-creation test
+- [ ] Add device selection if multi-device delivery is still a product requirement
 
-### Phase 10 — Extensibility
+### Phase 10 - Extensibility
 
-- [x] Plugin manifest
-- [x] Permission model
-- [x] Capability API
-- [x] Plugin SDK skeleton
-- [ ] Plugin lifecycle
-- [ ] Resolver plugins
-- [ ] Engine plugins
+- [x] Plugin manifest, permission, and capability data models
+- [x] `PluginManager` state transitions and tests
+- [x] `EngineProvider` and `ResolverProvider` traits
+- [ ] Invoke plugin lifecycle implementations and load executable plugin entries
+- [ ] Register plugin-provided engines/resolvers with Core; current initialization only changes manager state
+- [ ] Enforce permissions and define a stable SDK/runtime contract
 
-### Phase 11 — Media & Automation
+### Phase 11 - Media and Automation
 
-- [x] Foundational media data structures
-- [ ] Media probing workflow
-- [ ] Manifest parsing
-- [ ] Track selection
-- [ ] Segment scheduling
-- [ ] Mux/post-processing
-- [ ] Automation API
-- [ ] AI/MCP integration
-- [ ] Remote device management
+- [x] Foundational media, job, workflow, and MCP request types
+- [x] Workflow dependency ordering and simulated in-memory job API
+- [ ] Probe real media and parse manifests
+- [ ] Implement track selection, segment scheduling, muxing, and post-processing
+- [ ] Execute and persist real jobs/workflows instead of fabricating completed results
+- [ ] Expose an external automation endpoint and integrate AI/MCP where required
+- [ ] Implement remote device management
 
-## 3. Delivery Order
+## 2. Delivery Order From Current Code
 
-Foundation → Domain → Task State Machine → Task Service → Scheduler → Storage → Resolver → Engine Adapter → Protocol → Server/CLI → Desktop/Browser → Extensibility → Media/Automation.
+1. Make the existing server path durable and useful: SQLite startup/recovery, engine selection, and real HTTP task execution.
+2. Complete server/client contracts: authenticated transport where configured, observable progress/events, and a browser-compatible endpoint or bridge.
+3. Connect plugin providers and enforce their declared permissions.
+4. Replace simulated media operations with real processing, then expose automation and remote-device workflows.
 
-## 4. Engineering Rules
+## 3. Current Focus
 
-### Tests
-
-Core behavior must be testable without network access. Network and engine tests belong in controlled integration-test layers.
-
-### Dependencies
-
-Prefer small, well-scoped dependencies. A dependency should solve a concrete problem.
-
-### API Stability
-
-Anything exposed outside a crate boundary should be treated as an API. Breaking changes should be deliberate and documented.
-
-### Error Handling
-
-Errors should preserve actionable context and should not be reduced to opaque strings at subsystem boundaries.
-
-### Observability
-
-Core operations should emit structured events and should move toward structured logs rather than ad-hoc output.
-
-### Compatibility
-
-Protocol, storage schema, and plugin APIs require explicit versioning strategies before becoming stable public interfaces.
-
-## 5. Git Workflow
-
-- main remains buildable.
-- Feature work uses focused branches.
-- Small fixes may go through a PR.
-- Architectural changes require an RFC.
-- Each milestone should be represented by reviewable commits.
-- Releases are tagged from known-good commits.
-
-## 6. Current Focus
-
-Phases 0–9 have working foundations in the repository. Phase 10 has the plugin manifest, permission, capability, and SDK foundations. The current focus is plugin lifecycle and additional resolver/engine integrations, followed by media workflows and automation.
+Phases 0-9 have varying levels of scaffolding and library coverage, but the running server still uses an in-memory repository and in-memory engine. The immediate work is to close that runtime gap. Plugin and media crates contain more than data types, but their provider callbacks and real processing are not integrated into the product path.

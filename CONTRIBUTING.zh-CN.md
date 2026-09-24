@@ -37,6 +37,8 @@ PR 应说明：
 
 保持提交小而聚焦。维护者会优先关注正确性、可维护性、测试覆盖和长期兼容性。
 
+保持 `main` 可构建，Core 行为应尽量在无网络环境下测试；网络和 Engine 行为使用受控集成测试。依赖应解决具体需要，错误应保留可操作的上下文；随着运行能力扩展，优先使用结构化 Task/Scheduler Events。将公开的 crate API 以及 Protocol、Storage、Plugin 合约视为兼容性边界，在宣布稳定前制定版本策略，并记录有意的破坏性变更。
+
 ## 提交规范
 
 ### 格式
@@ -57,19 +59,11 @@ type: description
 | `test` | 测试相关 |
 | `chore` | 构建 / 工具链 / 其他辅助变更 |
 
-类型后加空格和冒号，描述使用中文。
+类型后使用冒号和空格；描述使用英文且末尾不加句号，与现有提交历史保持一致。
 
 ### 本地 CI 检查
 
-提交前必须在本地跑通以下命令：
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
-
-三项全部通过方可提交。
+提交前运行[开发指南](docs/DEVELOPMENT.zh-CN.md#rust-检查)中的 Rust 检查；这些命令与 [CI](.github/workflows/ci.yml) 一致。Rust 工作区包含 Tauri crate，需要对应平台的构建依赖。修改前端或浏览器扩展时，还应执行开发指南中的相应包检查；CI 目前尚未执行这些检查。
 
 ## 技术讨论
 
