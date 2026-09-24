@@ -6,10 +6,10 @@ All notable changes to Nexum will be documented here.
 
 ### Added
 
-- **Core**: task lifecycle, scheduler, resolver integration, and event collection. SQLite storage and restart recovery are available through library APIs; the running server uses an in-memory repository.
-- **Engine**: in-memory and HTTP adapters. The HTTP adapter follows redirects and records a final byte-count snapshot after a blocking download; the RPC `task.start` method currently selects the in-memory adapter.
+- **Core**: task lifecycle, scheduler, resolver integration, and event collection. SQLite storage and restart recovery now support the running server; recovery persists the normalized `Queued` state of previously downloading, paused, or retrying tasks.
+- **Engine**: in-memory and HTTP adapters. The HTTP adapter follows redirects, stages the response in a `.part` file, and renames a complete download into place. It reports a final byte-count snapshot; it has no incremental progress or cancellation.
 - **Protocol**: JSON-RPC 2.0 task and server-info methods, a version identifier, credential fields, and event envelope/buffer types. The server does not stream events or enforce credentials.
-- **Server**: localhost, line-delimited TCP JSON-RPC with one thread per connection. Configuration is parsed, but connection limits and required authentication are not enforced.
+- **Server**: localhost, line-delimited TCP JSON-RPC with one thread per connection. It holds a data-directory lock, stores tasks in `data_dir/nexum.sqlite`, recovers them before listening, and fails startup on directory, lock, database, or recovery errors. `task.start` launches an HTTP/HTTPS worker and returns before transfer completion. Successful downloads persist final progress and `Completed` state; failures requeue under the retry policy but are not automatically dispatched. Active HTTP transfers reject pause, resume, and remove. Connection limits and required authentication are not enforced.
 - **CLI**: task commands, a reusable TCP JSON-RPC client, saved server address and credential fields, server inspection, and RPC error formatting.
 - **Desktop**: Tauri 2 + React task UI connected to the TCP server, with a server-address field and manual task refresh.
 - **Browser**: Manifest V3 context menu, link detection, and popup configuration. Its HTTP send request is not yet compatible with the TCP-only server.

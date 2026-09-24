@@ -134,7 +134,7 @@ impl From<InvalidTransition> for TaskServiceError {
 }
 
 /// In-memory task service used by the Core during the initial implementation.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct TaskService {
     tasks: HashMap<TaskId, DownloadTask>,
     events: Vec<TaskEvent>,

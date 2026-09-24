@@ -52,14 +52,16 @@ cargo run -p nexum-server -- --port 39100
 
 ```bash
 cargo run -p nexum-cli -- task list
-cargo run -p nexum-cli -- task create task-1 https://example.com/file.bin ./file.bin
+cargo run -p nexum-cli -- task create task-1 https://example.com/ ./example.html
 cargo run -p nexum-cli -- task queue task-1
 cargo run -p nexum-cli -- task start
 ```
 
 编译出的可执行文件分别名为 `nexum-server` 和 `nexum-cli`。使用 `cargo run -p nexum-server -- --help` 和 `cargo run -p nexum-cli -- --help` 查看当前参数与命令。CLI 默认连接 `127.0.0.1:39100`；如需覆盖地址，将 `--server ADDR` 放在 `task` 或 `server` 前面。
 
-当前 Server 使用内存仓库构建 `Core`，重启后任务不会保留。`--data-dir` 目前只创建目录；`--max-connections` 仅显示配置值，不限制连接数；`--require-auth` 不会启用身份验证，`server.auth` 返回 `none`。对外的 `task start` 路径使用内存 Engine，不会下载示例文件。
+Server 将任务元数据和进度保存到 `--data-dir` 下的 `nexum.sqlite`（默认 `./data`，相对于 Server 工作目录）。启动时会按需创建目录，并在退出前一直持有同目录下 `nexum.lock` 的锁，因此同一数据目录只能由一个 Server 使用。Server 在监听前打开数据库并恢复任务；目录、锁、数据库或恢复失败会阻止启动。重启后，原先下载中、暂停或重试中的任务会在内存和 SQLite 中变为排队状态，但 Server 不会自动启动它们。`--max-connections` 仅显示配置值，不限制连接数；`--require-auth` 不会启用身份验证，`server.auth` 返回 `none`。
+
+`task start` 选取排队中的 HTTP/HTTPS 任务，启动 Worker 后返回任务 ID。传输异步完成，可再次执行 `task list` 查看 `Completed` 状态和下载文件。Server 会拒绝数据目录内的目标、符号链接目标，以及与活动传输重叠的目标。Worker 会先将完整响应写入目标目录的 `.part` 文件，再重命名到目标路径。传输失败会保留已有目标文件，在 Server 输出错误日志，并在重试策略允许时重新排队；需要再次调用 `task start` 才会重试。领取任务时进度重置为零，成功传输后才会写入最终字节数。活跃的 HTTP 传输不能暂停、恢复或删除。Magnet 和本地文件来源仍无传输 Engine。重启后会从零开始传输。
 
 ## Desktop
 

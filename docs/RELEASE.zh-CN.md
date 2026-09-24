@@ -16,7 +16,7 @@
 4. 在 `apps/desktop` 运行 `pnpm install && pnpm build`；在 `apps/extension` 运行 `pnpm install && pnpm lint && pnpm build`。这些 TypeScript 检查目前不在 CI 中。
 5. 运行 `cargo build --release -p nexum-server -p nexum-cli` 构建 Rust 命令行产物；可执行文件为 `target/release/nexum-server` 和 `target/release/nexum-cli`。桌面安装包需先构建前端，再在每个目标平台使用 Tauri 2 CLI，从 `apps/desktop` 执行 `cargo tauri build`；Tauri 打包配置启用了该平台支持的全部目标。
 6. 打包扩展时包含根目录 `manifest.json`、`icons/` 和生成的 `dist/`。清单同时引用后两处的文件，仅有 `dist/` 无法作为扩展加载。
-7. 使用本地 Server 对可执行文件和原生桌面包进行冒烟测试。当前 Server 将任务状态保存在内存中，`task start` RPC 使用内存 Engine。浏览器扩展请求的 HTTP `/jsonrpc` 尚未在 Server 中实现，因此暂不能把扩展创建任务视为通过的发布检查。
+7. 使用本地 Server 对可执行文件和原生桌面包进行冒烟测试。通过 HTTP 提供一个已知文件，将其 URL 加入队列并调用 `task start`；Worker 完成后核对目标文件字节和已持久化的 `Completed` 状态。使用同一 `--data-dir` 重启 Server，确认任务仍在，下载中断的任务变为 `Queued`；再次调用 `task start` 会从零开始传输。确认活跃的 HTTP 传输拒绝暂停、恢复和删除，会拒绝数据目录内和重叠的目标，失败的传输会保留已有目标文件。浏览器扩展请求的 HTTP `/jsonrpc` 尚未在 Server 中实现，因此暂不能把扩展创建任务视为通过的发布检查。
 8. 验证实际产物后，人工创建版本标签和 GitHub Release；在发布说明中记录目标平台及尚未完成的集成。
 
 英文版见 [RELEASE.md](RELEASE.md)。

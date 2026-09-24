@@ -25,22 +25,23 @@
 - [x] 带宽策略接口与限速值计算
 - [x] Scheduler Events 与受控单元测试
 - [ ] 将计算出的带宽限制应用到传输
-- [ ] 在 Server 中自动派发排队任务、推进运行中任务
+- [ ] 自动派发排队任务和重试；HTTP Worker 目前需要显式调用 `task.start`
 
 ### Phase 3 - Storage
 
 - [x] `TaskRepository` 与内存实现
 - [x] 带 Schema Version 和 Migration 的 SQLite 任务元数据/进度 Repository
-- [x] 重建排队任务的 `Core::recover`，并有库级测试
-- [ ] 在 Server 启动路径打开 SQLite 并执行恢复
-- [ ] 验证真实 Server 重启后任务连续性
+- [x] 重建排队任务并持久化恢复状态的 `Core::recover`
+- [x] 在 Server 启动路径打开 SQLite 并执行恢复
+- [x] 验证真实 Server 重启后任务连续性
 
 ### Phase 4 - Resolver
 
 - [x] Resolver 请求/结果/错误模型与 Registry
 - [x] HTTP/HTTPS 校验、Magnet `xt=urn:btih:` 参数存在性检查、已有本地路径校验
 - [x] Resolver 测试与 Core 创建任务时的来源校验
-- [ ] 将解析后的来源路由到兼容 Engine
+- [x] 从 Server 的 `task.start` 将排队的 HTTP/HTTPS 任务路由到 HTTP Worker
+- [ ] 为 Magnet 和本地文件来源接入兼容的传输 Engine
 - [ ] 增加真实 Magnet 与本地来源传输路径
 
 ### Phase 5 - Engine Adapter
@@ -48,7 +49,8 @@
 - [x] Adapter Capability、Task Mapping 与 Engine Registry
 - [x] 模拟 InMemory Engine 和支持重定向的阻塞式 HTTP GET Engine
 - [x] 受控 Engine 测试
-- [ ] 允许 Server/CLI/Desktop 任务操作选择 HTTP Engine；当前 `task.start` 使用 InMemory Engine
+- [x] 从 Server 的 `task.start` 运行 HTTP Engine；CLI 与 Desktop 使用同一个 RPC
+- [x] 将 HTTP 下载暂存到 `.part` 文件，仅在响应完整后重命名到目标路径
 - [ ] 为真实传输增加非阻塞进度、取消与可用的暂停/恢复能力
 
 ### Phase 6 - Nexum Protocol 与 Security
@@ -68,8 +70,9 @@
 - [x] 支持任务控制、地址配置和 Server 信息查询的 CLI TCP 客户端
 - [x] Server 命令行选项与 key-value 配置解析
 - [ ] 执行 `require_auth` 和 `max_connections`；当前只解析这两项
-- [ ] 利用 `data_dir` 实现 SQLite 持久化与重启恢复
-- [ ] 让普通 `task.start` 对支持的来源执行真实下载
+- [x] 利用 `data_dir` 实现 SQLite 持久化与重启恢复
+- [x] 让普通 `task.start` 对支持的 HTTP/HTTPS 来源启动真实下载
+- [ ] 自动派发重试，并向客户端报告传输错误，而不只写入 Server 日志
 
 ### Phase 8 - Desktop
 
@@ -109,11 +112,11 @@
 
 ## 2. 基于当前代码的实施顺序
 
-1. 让现有 Server 路径具备持久化和真实用途：SQLite 启动/恢复、Engine 选择、真实 HTTP 任务执行。
-2. 补齐 Server/客户端合约：按配置认证的传输、可观察的进度/事件，以及 Browser 可用的端点或桥接。
+1. 补齐 HTTP 运行路径：增量进度、取消或可用的暂停/恢复、自动派发重试，以及客户端可见的传输错误。
+2. 补齐 Server/客户端合约：按配置认证的传输、可观察的事件，以及 Browser 可用的端点或桥接。
 3. 接入 Plugin Provider 并执行其声明的权限。
 4. 用真实处理替换模拟的 Media 操作，再对外提供 Automation 与远程设备工作流。
 
 ## 3. 当前重点
 
-Phase 0-9 各自具有不同程度的脚手架和库级覆盖，但运行中的 Server 仍使用内存 Repository 与内存 Engine。近期重点是补齐这个运行链路。Plugin 与 Media crates 已包含数据类型之外的代码，但 Provider 回调和真实处理尚未接入产品路径。
+Phase 0-9 各自具有不同程度的脚手架和库级覆盖。运行中的 Server 使用 SQLite 持久化任务并在重启后恢复，`task.start` 会启动真实的 HTTP/HTTPS Worker。传输成功后写入最终进度并标记完成。活跃的 HTTP 传输不能暂停、恢复或删除；当前没有增量进度、取消或自动派发重试。Magnet 和本地文件传输仍不受支持。Plugin 与 Media crates 已包含数据类型之外的代码，但 Provider 回调和真实处理尚未接入产品路径。
