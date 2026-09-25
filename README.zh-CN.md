@@ -32,7 +32,7 @@ cargo run -p nexum-cli -- task start
 cargo run -p nexum-cli -- task list
 ```
 
-`task start` 在启动 HTTP Worker 后即返回。成功后会写入 `./example.html`、记录最终下载字节数，并将任务标记为 `Completed`；此前 `task list` 可能显示 `Downloading`。完整响应先写入临时 `.part` 文件，完成后才替换目标文件。目前没有增量进度、自动派发重试，也不能暂停或取消正在执行的 HTTP 传输。Server 重启后任务仍在，但中断的 `Downloading` 任务会重置为 `Queued`，再次调用 `task start` 才会从头下载。Server 默认绑定 `127.0.0.1:39100`，可用 `--port PORT` 修改端口，CLI 可用 `--server ADDR` 修改连接地址。即使设置 `--require-auth`，Server 也不会强制认证，因此不要将它暴露到不可信网络。客户端设置、完整 Rust 检查命令和平台依赖见[开发指南](docs/DEVELOPMENT.zh-CN.md)。
+`task start` 在启动 HTTP Worker 后即返回。Worker 每写入一个响应块就报告进度；Server 自上次写入起累计至少 1 MiB 或经过 250 ms 时持久化一次中间快照，并在任务标记为 `Completed` 前刷新最终快照。成功后会写入 `./example.html` 并记录最终下载字节数；此期间 `task list` 可能显示 `Downloading`。`task.get` 和 `task.list` 返回持久化进度，以及表示最近一次传输错误的 `error` 字段。完整响应先写入临时 `.part` 文件，完成后才替换目标文件。传输失败会保留已有目标文件、记录 Server 错误、将错误保存到任务，并在重试策略允许时重新排队；默认策略允许重试三次，但排队的重试仍需再次调用 `task start` 才会执行。领取新一轮传输时进度会重置，旧错误也会清除。活跃的 HTTP 传输仍不能暂停、恢复或取消。Server 重启后任务仍在，但中断的 `Downloading` 任务会重置为 `Queued`，再次调用 `task start` 才会从头下载。Server 默认绑定 `127.0.0.1:39100`，可用 `--port PORT` 修改端口，CLI 可用 `--server ADDR` 修改连接地址。即使设置 `--require-auth`，Server 也不会强制认证，因此不要将它暴露到不可信网络。客户端设置、完整 Rust 检查命令和平台依赖见[开发指南](docs/DEVELOPMENT.zh-CN.md)。
 
 ## 文档与贡献
 

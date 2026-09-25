@@ -51,7 +51,8 @@ This plan distinguishes code-level foundations from an end-to-end feature availa
 - [x] Controlled engine tests
 - [x] Run the HTTP engine from server `task.start`; CLI and Desktop use this same RPC
 - [x] Stage HTTP downloads in a `.part` file and rename only a complete response to the destination
-- [ ] Add nonblocking transfer progress, cancellation, and supported pause/resume behavior for real transfers
+- [x] Add incremental progress reporting and persistence for real transfers
+- [ ] Add cancellation and supported pause/resume behavior for real transfers
 
 ### Phase 6 - Nexum Protocol and Security
 
@@ -72,7 +73,8 @@ This plan distinguishes code-level foundations from an end-to-end feature availa
 - [ ] Apply `require_auth` and `max_connections`; both are currently parsed but not enforced
 - [x] Use `data_dir` for SQLite persistence and restart recovery
 - [x] Make normal `task.start` launch a real HTTP/HTTPS download for supported sources
-- [ ] Automatically dispatch retries and expose transfer errors to clients instead of only server logs
+- [x] Persist transfer errors and expose them through task views instead of only server logs
+- [ ] Automatically dispatch queued retries
 
 ### Phase 8 - Desktop
 
@@ -112,11 +114,11 @@ This plan distinguishes code-level foundations from an end-to-end feature availa
 
 ## 2. Delivery Order From Current Code
 
-1. Complete the HTTP runtime path with incremental progress, cancellation or supported pause/resume, automatic retry dispatch, and client-visible transfer errors.
+1. Complete the HTTP runtime path with cancellation or supported pause/resume and automatic retry dispatch.
 2. Complete server/client contracts: authenticated transport where configured, observable events, and a browser-compatible endpoint or bridge.
 3. Connect plugin providers and enforce their declared permissions.
 4. Replace simulated media operations with real processing, then expose automation and remote-device workflows.
 
 ## 3. Current Focus
 
-Phases 0-9 have varying levels of scaffolding and library coverage. The running server persists tasks in SQLite, recovers them on restart, and launches a real HTTP/HTTPS worker for `task.start`. It records final progress and completion after a successful transfer. An active HTTP transfer cannot be paused, resumed, or removed; there is no incremental progress, cancellation, or automatic retry dispatch. Magnet and local-file transfers remain unsupported. Plugin and media crates contain more than data types, but their provider callbacks and real processing are not integrated into the product path.
+Phases 0-9 have varying levels of scaffolding and library coverage. The running server persists tasks in SQLite, recovers them on restart, and launches a real HTTP/HTTPS worker for `task.start`. It persists throttled intermediate progress, exposes the latest transfer error through task views, and records final progress and completion after a successful transfer. An active HTTP transfer cannot be paused, resumed, or removed; cancellation and automatic retry dispatch remain unavailable. Magnet and local-file transfers remain unsupported. Plugin and media crates contain more than data types, but their provider callbacks and real processing are not integrated into the product path.

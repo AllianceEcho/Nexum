@@ -57,6 +57,7 @@ pub struct DownloadTask {
     pub destination: Destination,
     pub state: TaskState,
     pub progress: Progress,
+    pub last_error: Option<String>,
 }
 
 impl DownloadTask {
@@ -67,6 +68,7 @@ impl DownloadTask {
             destination,
             state: TaskState::Created,
             progress: Progress::default(),
+            last_error: None,
         }
     }
 
@@ -211,17 +213,48 @@ impl TaskService {
         id: &TaskId,
         progress: Progress,
     ) -> Result<&DownloadTask, TaskServiceError> {
-        let task = self
-            .tasks
-            .get_mut(id)
-            .ok_or_else(|| TaskServiceError::NotFound(id.clone()))?;
+        {
+            let task = self
+                .tasks
+                .get_mut(id)
+                .ok_or_else(|| TaskServiceError::NotFound(id.clone()))?;
+            task.progress = progress.clone();
+        }
 
-        task.progress = progress.clone();
+        // Keep the event buffer bounded while a transfer reports frequent
+        // progress updates. The latest progress for each active task is enough
+        // for consumers that drain the buffer between scheduler events.
+        for event in self.events.iter_mut().rev() {
+            match event {
+                TaskEvent::ProgressChanged {
+                    task_id,
+                    progress: previous,
+                } if task_id == id => {
+                    *previous = progress;
+                    return Ok(self.tasks.get(id).expect("task still exists"));
+                }
+                TaskEvent::ProgressChanged { .. } => continue,
+                _ => break,
+            }
+        }
         self.events.push(TaskEvent::ProgressChanged {
             task_id: id.clone(),
             progress,
         });
 
+        Ok(self.tasks.get(id).expect("task still exists"))
+    }
+
+    pub fn set_error(
+        &mut self,
+        id: &TaskId,
+        error: Option<String>,
+    ) -> Result<&DownloadTask, TaskServiceError> {
+        let task = self
+            .tasks
+            .get_mut(id)
+            .ok_or_else(|| TaskServiceError::NotFound(id.clone()))?;
+        task.last_error = error;
         Ok(self.tasks.get(id).expect("task still exists"))
     }
 

@@ -51,7 +51,8 @@
 - [x] 受控 Engine 测试
 - [x] 从 Server 的 `task.start` 运行 HTTP Engine；CLI 与 Desktop 使用同一个 RPC
 - [x] 将 HTTP 下载暂存到 `.part` 文件，仅在响应完整后重命名到目标路径
-- [ ] 为真实传输增加非阻塞进度、取消与可用的暂停/恢复能力
+- [x] 为真实传输增加增量进度报告与持久化
+- [ ] 为真实传输增加取消与可用的暂停/恢复能力
 
 ### Phase 6 - Nexum Protocol 与 Security
 
@@ -72,7 +73,8 @@
 - [ ] 执行 `require_auth` 和 `max_connections`；当前只解析这两项
 - [x] 利用 `data_dir` 实现 SQLite 持久化与重启恢复
 - [x] 让普通 `task.start` 对支持的 HTTP/HTTPS 来源启动真实下载
-- [ ] 自动派发重试，并向客户端报告传输错误，而不只写入 Server 日志
+- [x] 持久化传输错误并通过任务视图返回，而不只写入 Server 日志
+- [ ] 自动派发排队中的重试
 
 ### Phase 8 - Desktop
 
@@ -112,11 +114,11 @@
 
 ## 2. 基于当前代码的实施顺序
 
-1. 补齐 HTTP 运行路径：增量进度、取消或可用的暂停/恢复、自动派发重试，以及客户端可见的传输错误。
+1. 补齐 HTTP 运行路径：取消或可用的暂停/恢复，以及自动派发重试。
 2. 补齐 Server/客户端合约：按配置认证的传输、可观察的事件，以及 Browser 可用的端点或桥接。
 3. 接入 Plugin Provider 并执行其声明的权限。
 4. 用真实处理替换模拟的 Media 操作，再对外提供 Automation 与远程设备工作流。
 
 ## 3. 当前重点
 
-Phase 0-9 各自具有不同程度的脚手架和库级覆盖。运行中的 Server 使用 SQLite 持久化任务并在重启后恢复，`task.start` 会启动真实的 HTTP/HTTPS Worker。传输成功后写入最终进度并标记完成。活跃的 HTTP 传输不能暂停、恢复或删除；当前没有增量进度、取消或自动派发重试。Magnet 和本地文件传输仍不受支持。Plugin 与 Media crates 已包含数据类型之外的代码，但 Provider 回调和真实处理尚未接入产品路径。
+Phase 0-9 各自具有不同程度的脚手架和库级覆盖。运行中的 Server 使用 SQLite 持久化任务并在重启后恢复，`task.start` 会启动真实的 HTTP/HTTPS Worker。Server 会节流持久化中间进度，通过任务视图返回最近一次传输错误，并在传输成功后写入最终进度与完成状态。活跃的 HTTP 传输不能暂停、恢复或删除；当前没有取消能力，也不会自动派发重试。Magnet 和本地文件传输仍不受支持。Plugin 与 Media crates 已包含数据类型之外的代码，但 Provider 回调和真实处理尚未接入产品路径。

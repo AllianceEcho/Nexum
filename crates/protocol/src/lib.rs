@@ -201,6 +201,7 @@ pub struct TaskView {
     pub state: String,
     pub downloaded_bytes: u64,
     pub total_bytes: Option<u64>,
+    pub error: Option<String>,
 }
 impl From<&nexum_task::DownloadTask> for TaskView {
     fn from(task: &nexum_task::DownloadTask) -> Self {
@@ -211,6 +212,7 @@ impl From<&nexum_task::DownloadTask> for TaskView {
             state: format!("{:?}", task.state),
             downloaded_bytes: task.progress.downloaded_bytes,
             total_bytes: task.progress.total_bytes,
+            error: task.last_error.clone(),
         }
     }
 }
@@ -616,6 +618,31 @@ mod tests {
             .map(|v| v.as_str().unwrap())
             .collect();
         assert_eq!(schemes, vec!["none"]);
+    }
+
+    #[test]
+    fn task_view_exposes_last_transfer_error() {
+        let mut core = Core::new(nexum_scheduler::SchedulerConfig::default()).unwrap();
+        let id = TaskId::from("failed-task");
+        core.create_task(
+            id.clone(),
+            DownloadSource::new("https://example.com/file"),
+            Destination::new("/tmp/file"),
+        )
+        .unwrap();
+        core.queue_task(&id, nexum_scheduler::Priority::NORMAL)
+            .unwrap();
+        core.claim_next().unwrap();
+        core.finish_task_with_error(&id, nexum_task::TaskState::Failed, "connection refused")
+            .unwrap();
+
+        let request = RpcRequest::new(1, "task.get", Some(json!({"id": "failed-task"})));
+        let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
+        assert_eq!(response.result.unwrap()["error"], "connection refused");
+
+        let request = RpcRequest::new(2, "task.list", None);
+        let response = RpcDispatcher::dispatch(&mut core, &request).unwrap();
+        assert_eq!(response.result.unwrap()[0]["error"], "connection refused");
     }
     #[test]
     fn unknown_method_is_reported() {

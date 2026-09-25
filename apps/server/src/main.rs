@@ -1,8 +1,13 @@
 //! Nexum TCP server with configuration support.
 
 use nexum_core::{
-    Core, nexum_domain::TaskId, nexum_engine::HttpEngine, nexum_resolver::ResolveKind,
-    nexum_scheduler::SchedulerConfig, nexum_storage::SqliteRepository, nexum_task::TaskState,
+    Core,
+    nexum_domain::TaskId,
+    nexum_engine::{EngineError, HttpEngine},
+    nexum_resolver::ResolveKind,
+    nexum_scheduler::SchedulerConfig,
+    nexum_storage::SqliteRepository,
+    nexum_task::TaskState,
 };
 use nexum_protocol::{
     Credential, RpcDispatcher, RpcErrorObject, RpcRequest, RpcResponse, parse_request,
@@ -14,6 +19,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 type ServerCore = Core<SqliteRepository>;
 const DATABASE_FILE: &str = "nexum.sqlite";
@@ -31,6 +37,33 @@ struct HttpTransfer {
     source: String,
     destination: String,
     destination_path: PathBuf,
+}
+
+const PROGRESS_MIN_BYTES: u64 = 1024 * 1024;
+const PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(250);
+
+#[derive(Default)]
+struct ProgressReporter {
+    last_persisted_bytes: u64,
+    last_persisted_at: Option<Instant>,
+}
+
+impl ProgressReporter {
+    fn should_persist(&self, progress: &nexum_core::nexum_domain::Progress) -> bool {
+        self.last_persisted_at.is_none()
+            || progress
+                .downloaded_bytes
+                .saturating_sub(self.last_persisted_bytes)
+                >= PROGRESS_MIN_BYTES
+            || self
+                .last_persisted_at
+                .is_some_and(|instant| instant.elapsed() >= PROGRESS_MIN_INTERVAL)
+    }
+
+    fn record(&mut self, progress: &nexum_core::nexum_domain::Progress) {
+        self.last_persisted_bytes = progress.downloaded_bytes;
+        self.last_persisted_at = Some(Instant::now());
+    }
 }
 
 /// Server configuration loaded from a simple config file or defaults.
@@ -99,7 +132,29 @@ impl ServerConfig {
 }
 
 fn run_http_transfer(state: Arc<Mutex<ServerState>>, transfer: HttpTransfer) {
-    let result = HttpEngine::new().download_to(&transfer.source, &transfer.destination);
+    let progress_state = Arc::clone(&state);
+    let progress_task_id = transfer.id.clone();
+    let mut progress_reporter = ProgressReporter::default();
+    let result = HttpEngine::new().download_to_with_progress(
+        &transfer.source,
+        &transfer.destination,
+        move |progress| {
+            if !progress_reporter.should_persist(&progress) {
+                return Ok(());
+            }
+            let mut state = progress_state.lock().expect("server state mutex poisoned");
+            let result = state
+                .core
+                .update_progress(&progress_task_id, progress.clone())
+                .map_err(|error| {
+                    EngineError::Failed(format!("could not persist download progress: {error:?}"))
+                });
+            if result.is_ok() {
+                progress_reporter.record(&progress);
+            }
+            result
+        },
+    );
     let mut state = state.lock().expect("server state mutex poisoned");
     match result {
         Ok(progress) => {
@@ -109,7 +164,11 @@ fn run_http_transfer(state: Arc<Mutex<ServerState>>, transfer: HttpTransfer) {
                 .and_then(|()| state.core.finish_task(&transfer.id, TaskState::Completed));
             if let Err(error) = outcome {
                 eprintln!("task {} completion failed: {error:?}", transfer.id);
-                if let Err(finish_error) = state.core.finish_task(&transfer.id, TaskState::Failed) {
+                if let Err(finish_error) = state.core.finish_task_with_error(
+                    &transfer.id,
+                    TaskState::Failed,
+                    format!("could not finalize HTTP transfer: {error:?}"),
+                ) {
                     eprintln!(
                         "task {} failure state could not be saved: {finish_error:?}",
                         transfer.id
@@ -119,7 +178,11 @@ fn run_http_transfer(state: Arc<Mutex<ServerState>>, transfer: HttpTransfer) {
         }
         Err(error) => {
             eprintln!("task {} HTTP transfer failed: {error}", transfer.id);
-            if let Err(finish_error) = state.core.finish_task(&transfer.id, TaskState::Failed) {
+            if let Err(finish_error) = state.core.finish_task_with_error(
+                &transfer.id,
+                TaskState::Failed,
+                error.to_string(),
+            ) {
                 eprintln!(
                     "task {} failure state could not be saved: {finish_error:?}",
                     transfer.id
@@ -246,7 +309,9 @@ fn start_http_task(state: &Arc<Mutex<ServerState>>, request: &RpcRequest) -> Opt
         let mut locked = state.lock().expect("server state mutex poisoned");
         locked.active_http.remove(&id);
         locked.active_destinations.remove(&destination_path);
-        let _ = locked.core.finish_task(&id, TaskState::Failed);
+        let _ = locked
+            .core
+            .finish_task_with_error(&id, TaskState::Failed, error.to_string());
         return reply_error(request, RpcErrorObject::internal_error(error.to_string()));
     }
     request.id.clone().map(|request_id| {

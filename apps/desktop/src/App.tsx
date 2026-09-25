@@ -8,6 +8,7 @@ interface TaskItem {
   state: string;
   downloaded_bytes: number;
   total_bytes: number | null;
+  error: string | null;
 }
 
 type Tab = "list" | "add" | "settings";
@@ -138,6 +139,11 @@ export default function App() {
                 <div style={{ fontSize: "12px", color: "#999", marginTop: "4px" }}>
                   {formatBytes(t.downloaded_bytes)} / {formatBytesMaybe(t.total_bytes)}
                 </div>
+                {t.error && (
+                  <div style={{ fontSize: "12px", color: "#b42318", marginTop: "4px" }}>
+                    {t.error}
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
                   {t.state !== "Queued" && t.state !== "Downloading" && t.state !== "Paused" && (
                     <button onClick={(e) => { e.stopPropagation(); handleQueue(t.id); }}>Queue</button>

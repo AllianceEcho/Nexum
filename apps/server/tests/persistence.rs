@@ -182,6 +182,56 @@ impl HttpFixture {
     }
 }
 
+struct ChunkedHttpFixture {
+    source: String,
+    first_chunk_sent: Receiver<()>,
+    release: Sender<()>,
+    worker: JoinHandle<()>,
+}
+
+impl ChunkedHttpFixture {
+    fn new(first: Vec<u8>, second: Vec<u8>) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let source = format!("http://{}/file", listener.local_addr().unwrap());
+        let (first_chunk_tx, first_chunk_sent) = mpsc::channel();
+        let (release, release_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut method = [0u8; 3];
+            stream.read_exact(&mut method).unwrap();
+            assert_eq!(&method, b"GET");
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                first.len() + second.len()
+            )
+            .unwrap();
+            stream.write_all(&first).unwrap();
+            stream.flush().unwrap();
+            first_chunk_tx.send(()).unwrap();
+            release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            let _ = stream.write_all(&second);
+        });
+        Self {
+            source,
+            first_chunk_sent,
+            release,
+            worker,
+        }
+    }
+
+    fn wait_until_first_chunk(&self) {
+        self.first_chunk_sent
+            .recv_timeout(Duration::from_secs(3))
+            .unwrap();
+    }
+
+    fn finish(self) {
+        self.release.send(()).unwrap();
+        self.worker.join().unwrap();
+    }
+}
+
 impl Drop for ServerProcess {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -285,6 +335,46 @@ fn http_download_completes_without_blocking_other_rpc_and_releases_slots() {
 }
 
 #[test]
+fn http_download_persists_incremental_progress_for_rpc_reads() {
+    let dir = TestDir::new();
+    let mut server = ServerProcess::start(dir.path());
+    let first = vec![b'a'; 32 * 1024];
+    let second = vec![b'b'; 32 * 1024];
+    let fixture = ChunkedHttpFixture::new(first, second);
+    let id = "progress-http";
+    let destination = dir.output_path(id);
+    server.call(
+        "task.create",
+        Some(json!({
+            "id": id,
+            "source": fixture.source,
+            "destination": destination.to_string_lossy(),
+        })),
+    );
+    server.call("task.queue", Some(json!({"id": id})));
+    assert_eq!(server.call("task.start", None), id);
+    fixture.wait_until_first_chunk();
+
+    let mut observed = 0;
+    for _ in 0..100 {
+        let task = server.call("task.get", Some(json!({"id": id})));
+        observed = task["downloaded_bytes"].as_u64().unwrap();
+        if observed > 0 {
+            assert_eq!(task["state"], "Downloading");
+            assert!(observed < 64 * 1024);
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(observed > 0, "no incremental progress was persisted");
+
+    fixture.finish();
+    server.wait_for_state(id, "Completed");
+    assert_eq!(fs::read(&destination).unwrap().len(), 64 * 1024);
+    server.stop();
+}
+
+#[test]
 fn unsupported_sources_stay_queued_and_http_errors_requeue() {
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
@@ -317,8 +407,24 @@ fn unsupported_sources_stay_queued_and_http_errors_requeue() {
     fixture.finish();
     server.wait_for_state("failed-http", "Queued");
     assert!(!destination.exists());
+    let failed = server.call("task.get", Some(json!({"id": "failed-http"})));
+    assert!(
+        failed["error"]
+            .as_str()
+            .is_some_and(|message| message.contains("HTTP GET returned 503"))
+    );
     server.call("task.remove", Some(json!({"id": "magnet"})));
     server.stop();
+
+    let mut restarted = ServerProcess::start(dir.path());
+    let failed = restarted.call("task.get", Some(json!({"id": "failed-http"})));
+    assert_eq!(failed["state"], "Queued");
+    assert!(
+        failed["error"]
+            .as_str()
+            .is_some_and(|message| message.contains("HTTP GET returned 503"))
+    );
+    restarted.stop();
 }
 
 #[test]
