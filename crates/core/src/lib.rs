@@ -176,6 +176,7 @@ impl<R: TaskRepository> Core<R> {
         // A claimed task starts a fresh transfer; recovery may have retained
         // bytes from an interrupted attempt, but the current engine does not resume it.
         tasks.update_progress(&id, nexum_domain::Progress::default())?;
+        tasks.set_error(&id, None)?;
         self.persist_candidate(&id, tasks, scheduler)?;
         Ok(Some(id))
     }
@@ -188,6 +189,7 @@ impl<R: TaskRepository> Core<R> {
             return Ok(false);
         }
         tasks.update_progress(id, nexum_domain::Progress::default())?;
+        tasks.set_error(id, None)?;
         self.persist_candidate(id, tasks, scheduler)?;
         Ok(true)
     }
@@ -206,6 +208,7 @@ impl<R: TaskRepository> Core<R> {
             return Ok(None);
         };
         tasks.update_progress(&task_id, nexum_domain::Progress::default())?;
+        tasks.set_error(&task_id, None)?;
         let task = tasks
             .get(&task_id)
             .cloned()
@@ -266,6 +269,7 @@ impl<R: TaskRepository> Core<R> {
                 Ok(Some(task_id))
             }
             Err(error) => {
+                tasks.set_error(&task_id, Some(error.to_string()))?;
                 scheduler.mark_finished(&mut tasks, &task_id, TaskState::Failed)?;
                 self.persist_candidate(&task_id, tasks, scheduler)?;
                 Err(CoreError::Engine(error))
@@ -365,6 +369,23 @@ impl<R: TaskRepository> Core<R> {
 
     pub fn finish_task(&mut self, id: &TaskId, state: TaskState) -> Result<(), CoreError> {
         self.commit_task_change(id, |tasks, scheduler| {
+            if state == TaskState::Completed {
+                tasks.set_error(id, None)?;
+            }
+            scheduler.mark_finished(tasks, id, state)?;
+            Ok(())
+        })
+    }
+
+    pub fn finish_task_with_error(
+        &mut self,
+        id: &TaskId,
+        state: TaskState,
+        error: impl Into<String>,
+    ) -> Result<(), CoreError> {
+        let error = error.into();
+        self.commit_task_change(id, |tasks, scheduler| {
+            tasks.set_error(id, Some(error))?;
             scheduler.mark_finished(tasks, id, state)?;
             Ok(())
         })
@@ -1039,6 +1060,32 @@ mod tests {
         let stored = core.repository.get(&id).unwrap().unwrap();
         assert_eq!(stored.state, TaskState::Downloading);
         assert_eq!(stored.progress.downloaded_bytes, 64);
+    }
+
+    #[test]
+    fn failed_transfer_error_is_persisted_until_next_claim() {
+        let mut core =
+            Core::with_repository(config(), SqliteRepository::open_in_memory().unwrap()).unwrap();
+        let (source, destination) = task_source();
+        let id = TaskId::from("failed-transfer");
+        core.create_task(id.clone(), source, destination).unwrap();
+        core.queue_task(&id, Priority::NORMAL).unwrap();
+        core.claim_next().unwrap();
+
+        core.finish_task_with_error(&id, TaskState::Failed, "HTTP GET returned 503")
+            .unwrap();
+        let stored = core.repository.get(&id).unwrap().unwrap();
+        assert_eq!(stored.state, TaskState::Queued);
+        assert_eq!(stored.last_error.as_deref(), Some("HTTP GET returned 503"));
+        assert_eq!(
+            core.tasks.get(&id).unwrap().last_error.as_deref(),
+            stored.last_error.as_deref()
+        );
+
+        core.claim_next().unwrap();
+        let stored = core.repository.get(&id).unwrap().unwrap();
+        assert_eq!(stored.state, TaskState::Downloading);
+        assert_eq!(stored.last_error, None);
     }
 
     #[test]

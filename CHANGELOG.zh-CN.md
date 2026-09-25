@@ -7,9 +7,9 @@
 ### 新增
 
 - **Core**：任务生命周期、Scheduler、Resolver 集成与事件收集。SQLite 存储和重启恢复现已接入运行中的 Server；恢复时会将原先下载中、暂停或重试中的任务归一为 `Queued` 并持久化。
-- **Engine**：内存与 HTTP 适配器。HTTP 适配器跟随重定向，将响应暂存到 `.part` 文件，并在下载完整后重命名到目标路径。它只报告最终字节数，没有增量进度或取消能力。
-- **Protocol**：JSON-RPC 2.0 任务与服务器信息方法、版本标识、凭据字段，以及事件封装和缓冲类型。Server 尚不推送事件，也不校验凭据。
-- **Server**：仅监听本机的逐行 TCP JSON-RPC 服务，每个连接使用一个线程。Server 持有数据目录锁，将任务保存在 `data_dir/nexum.sqlite`，并在监听前执行恢复；目录、锁、数据库或恢复失败会阻止启动。`task.start` 启动 HTTP/HTTPS Worker 后即返回。成功下载会持久化最终进度与 `Completed` 状态；失败后会按重试策略重新排队，但不会自动派发。活跃的 HTTP 传输拒绝暂停、恢复和删除。连接数上限与强制认证尚未执行。
+- **Engine**：内存与 HTTP 适配器。HTTP 适配器跟随重定向，将响应暂存到 `.part` 文件，在完整下载后重命名到目标路径，并在每个响应块写入后报告进度。它仍没有取消路径。
+- **Protocol**：JSON-RPC 2.0 任务与服务器信息方法、版本标识、凭据字段，以及事件封装和缓冲类型。`task.get` 和 `task.list` 返回的 `TaskView` 包含持久化进度，以及表示最近一次传输错误的 `error` 字段。Server 尚不推送事件，也不校验凭据。
+- **Server**：仅监听本机的逐行 TCP JSON-RPC 服务，每个连接使用一个线程。Server 持有数据目录锁，将任务保存在 `data_dir/nexum.sqlite`，并在监听前执行恢复；目录、锁、数据库或恢复失败会阻止启动。`task.start` 启动 HTTP/HTTPS Worker 后即返回。响应新增至少 1 MiB 或经过 250 ms 时 Server 持久化中间进度，并在写入 `Completed` 前刷新最终快照。失败时会在 `TaskView` 中保留错误，并在默认三次重试预算未耗尽时重新排队；预算耗尽后任务保持 `Failed`。重试不会自动派发，仍需再次调用 `task.start`，而新一轮领取会清除旧错误。活跃的 HTTP 传输拒绝暂停、恢复和删除。连接数上限与强制认证尚未执行。
 - **CLI**：任务命令、可复用的 TCP JSON-RPC Client、保存服务器地址与凭据的配置、服务器信息查询和 RPC 错误格式化。
 - **Desktop**：通过 TCP 连接 Server 的 Tauri 2 + React 任务界面，提供服务器地址输入和手动刷新。
 - **Browser**：Manifest V3 右键菜单、链接检测和弹窗配置；其 HTTP 发送请求目前无法与仅支持 TCP 的 Server 配合。

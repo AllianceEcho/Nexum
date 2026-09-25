@@ -302,6 +302,23 @@ impl HttpEngine {
     ///
     /// This call blocks and may be run from a worker without holding Core's lock.
     pub fn download_to(&self, source: &str, destination: &str) -> Result<Progress, EngineError> {
+        self.download_to_with_progress(source, destination, |_| Ok(()))
+    }
+
+    /// Downloads a complete HTTP response and reports each written chunk.
+    ///
+    /// The callback runs after a chunk has been written to the temporary file.
+    /// Returning an error aborts the transfer and leaves the final destination
+    /// untouched.
+    pub fn download_to_with_progress<F>(
+        &self,
+        source: &str,
+        destination: &str,
+        mut on_progress: F,
+    ) -> Result<Progress, EngineError>
+    where
+        F: FnMut(Progress) -> Result<(), EngineError>,
+    {
         let mut response = self
             .client
             .get(source)
@@ -334,6 +351,7 @@ impl HttpEngine {
                 .write_all(&buffer[..read])
                 .map_err(|error| EngineError::Failed(error.to_string()))?;
             downloaded += read as u64;
+            on_progress(Progress::new(downloaded, total))?;
         }
 
         if let Some(expected) = total
@@ -510,6 +528,7 @@ impl TaskMapping {
 mod tests {
     use super::*;
     use std::net::TcpListener;
+    use std::sync::mpsc;
     use std::thread;
 
     static NEXT_TEST_DIR: AtomicU64 = AtomicU64::new(0);
@@ -545,6 +564,39 @@ mod tests {
             stream.write_all(response).unwrap();
         });
         (address, server)
+    }
+
+    fn serve_in_chunks(
+        first: Vec<u8>,
+        second: Vec<u8>,
+    ) -> (
+        String,
+        mpsc::Receiver<()>,
+        mpsc::Sender<()>,
+        thread::JoinHandle<()>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}/file", listener.local_addr().unwrap());
+        let (first_sent_tx, first_sent) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut method = [0u8; 3];
+            stream.read_exact(&mut method).unwrap();
+            assert_eq!(&method, b"GET");
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                first.len() + second.len()
+            )
+            .unwrap();
+            stream.write_all(&first).unwrap();
+            stream.flush().unwrap();
+            first_sent_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+            stream.write_all(&second).unwrap();
+        });
+        (address, first_sent, release_tx, worker)
     }
 
     #[derive(Default)]
@@ -619,6 +671,40 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn http_engine_reports_incremental_progress_after_each_chunk() {
+        let dir = TestDir::new();
+        let destination = dir.0.join("file.bin");
+        let first = vec![b'a'; 32 * 1024];
+        let second = vec![b'b'; 32 * 1024];
+        let (source, first_sent, release, server) = serve_in_chunks(first, second);
+        let (progress_tx, progress_rx) = mpsc::channel();
+        let source_for_worker = source.clone();
+        let destination_for_worker = destination.to_str().unwrap().to_owned();
+        let worker = thread::spawn(move || {
+            HttpEngine::new().download_to_with_progress(
+                &source_for_worker,
+                &destination_for_worker,
+                |progress| {
+                    progress_tx.send(progress.clone()).unwrap();
+                    Ok(())
+                },
+            )
+        });
+
+        first_sent.recv().unwrap();
+        let first_progress = progress_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert!(first_progress.downloaded_bytes > 0);
+        assert!(first_progress.downloaded_bytes < 64 * 1024);
+        assert_eq!(first_progress.total_bytes, Some(64 * 1024));
+        release.send(()).unwrap();
+
+        let result = worker.join().unwrap().unwrap();
+        server.join().unwrap();
+        assert_eq!(result, Progress::new(64 * 1024, Some(64 * 1024)));
+        assert_eq!(std::fs::read(&destination).unwrap().len(), 64 * 1024);
     }
 
     #[test]

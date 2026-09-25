@@ -30,6 +30,7 @@ pub struct StoredTask {
     pub destination: Destination,
     pub state: TaskState,
     pub progress: Progress,
+    pub last_error: Option<String>,
 }
 
 impl From<DownloadTask> for StoredTask {
@@ -40,6 +41,7 @@ impl From<DownloadTask> for StoredTask {
             destination: task.destination,
             state: task.state,
             progress: task.progress,
+            last_error: task.last_error,
         }
     }
 }
@@ -52,6 +54,7 @@ impl StoredTask {
             destination: self.destination,
             state: self.state,
             progress: self.progress,
+            last_error: self.last_error,
         }
     }
 }
@@ -172,7 +175,7 @@ impl SqliteRepository {
     pub fn open(path: impl AsRef<std::path::Path>) -> Result<Self, StorageError> {
         let connection =
             rusqlite::Connection::open(path).map_err(|e| StorageError::Other(e.to_string()))?;
-        let repository = Self { connection };
+        let mut repository = Self { connection };
         repository.initialize()?;
         Ok(repository)
     }
@@ -180,12 +183,12 @@ impl SqliteRepository {
     pub fn open_in_memory() -> Result<Self, StorageError> {
         let connection = rusqlite::Connection::open_in_memory()
             .map_err(|e| StorageError::Other(e.to_string()))?;
-        let repository = Self { connection };
+        let mut repository = Self { connection };
         repository.initialize()?;
         Ok(repository)
     }
 
-    fn initialize(&self) -> Result<(), StorageError> {
+    fn initialize(&mut self) -> Result<(), StorageError> {
         self.connection
             .execute_batch(
                 "CREATE TABLE IF NOT EXISTS schema_version (
@@ -208,7 +211,7 @@ impl SqliteRepository {
         self.migrate()
     }
 
-    fn migrate(&self) -> Result<(), StorageError> {
+    fn migrate(&mut self) -> Result<(), StorageError> {
         let version: i64 = self
             .connection
             .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| {
@@ -216,14 +219,18 @@ impl SqliteRepository {
             })
             .map_err(|e| StorageError::Other(e.to_string()))?;
 
-        if version > 1 {
+        if version > 2 {
             return Err(StorageError::Other(format!(
                 "unsupported schema version: {version}"
             )));
         }
 
         if version < 1 {
-            self.connection
+            let transaction = self
+                .connection
+                .transaction()
+                .map_err(|e| StorageError::Other(e.to_string()))?;
+            transaction
                 .execute_batch(
                     "CREATE TABLE tasks (
                     id TEXT PRIMARY KEY,
@@ -237,6 +244,25 @@ impl SqliteRepository {
                 );
                 UPDATE schema_version SET version = 1;",
                 )
+                .map_err(|e| StorageError::Other(e.to_string()))?;
+            transaction
+                .commit()
+                .map_err(|e| StorageError::Other(e.to_string()))?;
+        }
+
+        if version < 2 {
+            let transaction = self
+                .connection
+                .transaction()
+                .map_err(|e| StorageError::Other(e.to_string()))?;
+            transaction
+                .execute("ALTER TABLE tasks ADD COLUMN last_error TEXT", [])
+                .map_err(|e| StorageError::Other(e.to_string()))?;
+            transaction
+                .execute("UPDATE schema_version SET version = 2", [])
+                .map_err(|e| StorageError::Other(e.to_string()))?;
+            transaction
+                .commit()
                 .map_err(|e| StorageError::Other(e.to_string()))?;
         }
 
@@ -287,6 +313,7 @@ impl SqliteRepository {
                 speed_bytes_per_second: row.get(6)?,
                 eta_seconds: row.get(7)?,
             },
+            last_error: row.get(8)?,
         })
     }
 }
@@ -295,8 +322,8 @@ impl TaskRepository for SqliteRepository {
     fn insert(&mut self, task: StoredTask) -> Result<(), StorageError> {
         self.connection.execute(
             "INSERT INTO tasks
-             (id, source, destination, state, downloaded_bytes, total_bytes, speed_bytes_per_second, eta_seconds)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             (id, source, destination, state, downloaded_bytes, total_bytes, speed_bytes_per_second, eta_seconds, last_error)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 task.id.as_str(),
                 task.source.as_str(),
@@ -306,6 +333,7 @@ impl TaskRepository for SqliteRepository {
                 task.progress.total_bytes,
                 task.progress.speed_bytes_per_second,
                 task.progress.eta_seconds,
+                task.last_error,
             ],
         ).map_err(|e| match e {
             rusqlite::Error::SqliteFailure(ref error, _) if error.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_PRIMARYKEY =>
@@ -317,7 +345,7 @@ impl TaskRepository for SqliteRepository {
 
     fn get(&self, id: &TaskId) -> Result<Option<StoredTask>, StorageError> {
         let mut statement = self.connection.prepare(
-            "SELECT id, source, destination, state, downloaded_bytes, total_bytes, speed_bytes_per_second, eta_seconds
+            "SELECT id, source, destination, state, downloaded_bytes, total_bytes, speed_bytes_per_second, eta_seconds, last_error
              FROM tasks WHERE id = ?1"
         ).map_err(|e| StorageError::Other(e.to_string()))?;
         let mut rows = statement
@@ -336,7 +364,7 @@ impl TaskRepository for SqliteRepository {
 
     fn list(&self) -> Result<Vec<StoredTask>, StorageError> {
         let mut statement = self.connection.prepare(
-            "SELECT id, source, destination, state, downloaded_bytes, total_bytes, speed_bytes_per_second, eta_seconds
+            "SELECT id, source, destination, state, downloaded_bytes, total_bytes, speed_bytes_per_second, eta_seconds, last_error
              FROM tasks ORDER BY rowid"
         ).map_err(|e| StorageError::Other(e.to_string()))?;
         let rows = statement
@@ -351,7 +379,7 @@ impl TaskRepository for SqliteRepository {
             .connection
             .execute(
                 "UPDATE tasks SET source = ?2, destination = ?3, state = ?4, downloaded_bytes = ?5,
-             total_bytes = ?6, speed_bytes_per_second = ?7, eta_seconds = ?8 WHERE id = ?1",
+             total_bytes = ?6, speed_bytes_per_second = ?7, eta_seconds = ?8, last_error = ?9 WHERE id = ?1",
                 rusqlite::params![
                     task.id.as_str(),
                     task.source.as_str(),
@@ -361,6 +389,7 @@ impl TaskRepository for SqliteRepository {
                     task.progress.total_bytes,
                     task.progress.speed_bytes_per_second,
                     task.progress.eta_seconds,
+                    task.last_error,
                 ],
             )
             .map_err(|e| StorageError::Other(e.to_string()))?;
@@ -413,6 +442,7 @@ mod sqlite_tests {
         repo.insert(task.clone()).unwrap();
         task.state = TaskState::Queued;
         task.progress = Progress::new(42, Some(100));
+        task.last_error = Some("previous transfer failed".into());
         repo.update(task.clone()).unwrap();
         assert_eq!(
             repo.get(&TaskId::from("task-1")).unwrap(),
@@ -430,6 +460,53 @@ mod sqlite_tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
+    }
+
+    #[test]
+    fn sqlite_repository_migrates_v1_tasks_with_empty_errors() {
+        let path = std::env::temp_dir().join(format!(
+            "nexum-storage-migration-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        {
+            let connection = rusqlite::Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE schema_version (version INTEGER NOT NULL);
+                     INSERT INTO schema_version (version) VALUES (1);
+                     CREATE TABLE tasks (
+                         id TEXT PRIMARY KEY,
+                         source TEXT NOT NULL,
+                         destination TEXT NOT NULL,
+                         state TEXT NOT NULL,
+                         downloaded_bytes INTEGER NOT NULL,
+                         total_bytes INTEGER,
+                         speed_bytes_per_second INTEGER NOT NULL,
+                         eta_seconds INTEGER
+                     );
+                     INSERT INTO tasks VALUES
+                         ('legacy', 'https://example.com/file', '/tmp/file', 'queued', 12, 100, 0, NULL);",
+                )
+                .unwrap();
+        }
+
+        let repository = SqliteRepository::open(&path).unwrap();
+        let stored = repository.get(&TaskId::from("legacy")).unwrap().unwrap();
+        assert_eq!(stored.progress.downloaded_bytes, 12);
+        assert_eq!(stored.last_error, None);
+        let version: i64 = repository
+            .connection
+            .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 2);
+        drop(repository);
+        let _ = std::fs::remove_file(path);
     }
 }

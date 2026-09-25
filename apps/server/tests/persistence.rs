@@ -9,11 +9,20 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
+static SERVER_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn server_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    SERVER_TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 struct TestDir {
     root: PathBuf,
@@ -182,6 +191,56 @@ impl HttpFixture {
     }
 }
 
+struct ChunkedHttpFixture {
+    source: String,
+    first_chunk_sent: Receiver<()>,
+    release: Sender<()>,
+    worker: JoinHandle<()>,
+}
+
+impl ChunkedHttpFixture {
+    fn new(first: Vec<u8>, second: Vec<u8>) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let source = format!("http://{}/file", listener.local_addr().unwrap());
+        let (first_chunk_tx, first_chunk_sent) = mpsc::channel();
+        let (release, release_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut method = [0u8; 3];
+            stream.read_exact(&mut method).unwrap();
+            assert_eq!(&method, b"GET");
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                first.len() + second.len()
+            )
+            .unwrap();
+            stream.write_all(&first).unwrap();
+            stream.flush().unwrap();
+            first_chunk_tx.send(()).unwrap();
+            release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            let _ = stream.write_all(&second);
+        });
+        Self {
+            source,
+            first_chunk_sent,
+            release,
+            worker,
+        }
+    }
+
+    fn wait_until_first_chunk(&self) {
+        self.first_chunk_sent
+            .recv_timeout(Duration::from_secs(3))
+            .unwrap();
+    }
+
+    fn finish(self) {
+        self.release.send(()).unwrap();
+        self.worker.join().unwrap();
+    }
+}
+
 impl Drop for ServerProcess {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -191,6 +250,7 @@ impl Drop for ServerProcess {
 
 #[test]
 fn tasks_survive_server_restart_and_active_states_requeue() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     for id in ["created", "queued", "downloading", "paused"] {
@@ -236,6 +296,7 @@ fn tasks_survive_server_restart_and_active_states_requeue() {
 
 #[test]
 fn http_download_completes_without_blocking_other_rpc_and_releases_slots() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     let body = b"Nexum HTTP download";
@@ -285,7 +346,49 @@ fn http_download_completes_without_blocking_other_rpc_and_releases_slots() {
 }
 
 #[test]
+fn http_download_persists_incremental_progress_for_rpc_reads() {
+    let _test_guard = server_test_guard();
+    let dir = TestDir::new();
+    let mut server = ServerProcess::start(dir.path());
+    let first = vec![b'a'; 32 * 1024];
+    let second = vec![b'b'; 32 * 1024];
+    let fixture = ChunkedHttpFixture::new(first, second);
+    let id = "progress-http";
+    let destination = dir.output_path(id);
+    server.call(
+        "task.create",
+        Some(json!({
+            "id": id,
+            "source": fixture.source,
+            "destination": destination.to_string_lossy(),
+        })),
+    );
+    server.call("task.queue", Some(json!({"id": id})));
+    assert_eq!(server.call("task.start", None), id);
+    fixture.wait_until_first_chunk();
+
+    let mut observed = 0;
+    for _ in 0..100 {
+        let task = server.call("task.get", Some(json!({"id": id})));
+        observed = task["downloaded_bytes"].as_u64().unwrap();
+        if observed > 0 {
+            assert_eq!(task["state"], "Downloading");
+            assert!(observed < 64 * 1024);
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(observed > 0, "no incremental progress was persisted");
+
+    fixture.finish();
+    server.wait_for_state(id, "Completed");
+    assert_eq!(fs::read(&destination).unwrap().len(), 64 * 1024);
+    server.stop();
+}
+
+#[test]
 fn unsupported_sources_stay_queued_and_http_errors_requeue() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     server.call(
@@ -317,12 +420,29 @@ fn unsupported_sources_stay_queued_and_http_errors_requeue() {
     fixture.finish();
     server.wait_for_state("failed-http", "Queued");
     assert!(!destination.exists());
+    let failed = server.call("task.get", Some(json!({"id": "failed-http"})));
+    assert!(
+        failed["error"]
+            .as_str()
+            .is_some_and(|message| message.contains("HTTP GET returned 503"))
+    );
     server.call("task.remove", Some(json!({"id": "magnet"})));
     server.stop();
+
+    let mut restarted = ServerProcess::start(dir.path());
+    let failed = restarted.call("task.get", Some(json!({"id": "failed-http"})));
+    assert_eq!(failed["state"], "Queued");
+    assert!(
+        failed["error"]
+            .as_str()
+            .is_some_and(|message| message.contains("HTTP GET returned 503"))
+    );
+    restarted.stop();
 }
 
 #[test]
 fn http_download_cannot_replace_server_database_or_lock() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     for file in ["nexum.sqlite", "nexum.lock"] {
@@ -350,6 +470,7 @@ fn http_download_cannot_replace_server_database_or_lock() {
 
 #[test]
 fn http_downloads_to_the_same_destination_do_not_overlap() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     let first = HttpFixture::new(b"first response");
@@ -407,6 +528,7 @@ fn server_output_with_timeout(data_dir: &Path, port: Option<u16>) -> Output {
 
 #[test]
 fn second_server_cannot_recover_a_live_servers_tasks() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let fixture = HttpFixture::new(b"slow download");
     let mut first = ServerProcess::start(dir.path());
@@ -451,6 +573,7 @@ fn second_server_cannot_recover_a_live_servers_tasks() {
 
 #[test]
 fn startup_fails_when_data_dir_is_a_file() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let invalid_dir = dir.path().join("not-a-directory");
     fs::write(&invalid_dir, "occupied").unwrap();
@@ -461,6 +584,7 @@ fn startup_fails_when_data_dir_is_a_file() {
 
 #[test]
 fn startup_fails_when_database_cannot_be_opened() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     fs::write(dir.path().join("nexum.sqlite"), "not a SQLite database").unwrap();
     let output = server_output_with_timeout(dir.path(), None);
