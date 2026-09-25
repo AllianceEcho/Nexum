@@ -9,11 +9,20 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
+static SERVER_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn server_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    SERVER_TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 struct TestDir {
     root: PathBuf,
@@ -241,6 +250,7 @@ impl Drop for ServerProcess {
 
 #[test]
 fn tasks_survive_server_restart_and_active_states_requeue() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     for id in ["created", "queued", "downloading", "paused"] {
@@ -286,6 +296,7 @@ fn tasks_survive_server_restart_and_active_states_requeue() {
 
 #[test]
 fn http_download_completes_without_blocking_other_rpc_and_releases_slots() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     let body = b"Nexum HTTP download";
@@ -336,6 +347,7 @@ fn http_download_completes_without_blocking_other_rpc_and_releases_slots() {
 
 #[test]
 fn http_download_persists_incremental_progress_for_rpc_reads() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     let first = vec![b'a'; 32 * 1024];
@@ -376,6 +388,7 @@ fn http_download_persists_incremental_progress_for_rpc_reads() {
 
 #[test]
 fn unsupported_sources_stay_queued_and_http_errors_requeue() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     server.call(
@@ -429,6 +442,7 @@ fn unsupported_sources_stay_queued_and_http_errors_requeue() {
 
 #[test]
 fn http_download_cannot_replace_server_database_or_lock() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     for file in ["nexum.sqlite", "nexum.lock"] {
@@ -456,6 +470,7 @@ fn http_download_cannot_replace_server_database_or_lock() {
 
 #[test]
 fn http_downloads_to_the_same_destination_do_not_overlap() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
     let first = HttpFixture::new(b"first response");
@@ -513,6 +528,7 @@ fn server_output_with_timeout(data_dir: &Path, port: Option<u16>) -> Output {
 
 #[test]
 fn second_server_cannot_recover_a_live_servers_tasks() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let fixture = HttpFixture::new(b"slow download");
     let mut first = ServerProcess::start(dir.path());
@@ -557,6 +573,7 @@ fn second_server_cannot_recover_a_live_servers_tasks() {
 
 #[test]
 fn startup_fails_when_data_dir_is_a_file() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let invalid_dir = dir.path().join("not-a-directory");
     fs::write(&invalid_dir, "occupied").unwrap();
@@ -567,6 +584,7 @@ fn startup_fails_when_data_dir_is_a_file() {
 
 #[test]
 fn startup_fails_when_database_cannot_be_opened() {
+    let _test_guard = server_test_guard();
     let dir = TestDir::new();
     fs::write(dir.path().join("nexum.sqlite"), "not a SQLite database").unwrap();
     let output = server_output_with_timeout(dir.path(), None);
