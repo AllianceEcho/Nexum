@@ -25,7 +25,7 @@ The server is the only current component that combines RPC operations, persisten
 - Queueing an eligible HTTP/HTTPS task is sufficient to start it when capacity is available.
 - A server restart automatically resumes eligible queued HTTP/HTTPS tasks from byte zero after recovery; unsupported or blocked tasks remain queued.
 - A failed HTTP attempt is automatically retried while the existing retry budget permits. Retry counts and scheduler ordering remain in memory and are not persisted across restart.
-- Magnet and local-file transfers still have no engine, and active HTTP transfers still cannot be cancelled, paused, resumed, or removed.
+- Magnet and local-file transfers still have no engine. Active HTTP control is defined separately by [ADR 0003](0003-http-transfer-controls.md); this dispatcher only starts and retires workers.
 - A worker panic or poisoned server mutex can leave active bookkeeping unreleased; recovery for those process-level failures remains outside this decision.
 
 ## Alternatives Considered

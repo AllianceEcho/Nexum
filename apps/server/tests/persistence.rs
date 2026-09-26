@@ -363,18 +363,6 @@ fn http_download_completes_without_blocking_other_rpc_and_releases_slots() {
         fixture.wait_until_connected();
         assert_eq!(server.call("server.version", None), "1");
         assert_eq!(server.task_state(&id), "Downloading");
-        assert!(
-            server
-                .request("task.pause", Some(json!({"id": id})))
-                .get("error")
-                .is_some()
-        );
-        assert!(
-            server
-                .request("task.remove", Some(json!({"id": id})))
-                .get("error")
-                .is_some()
-        );
         fixture.finish();
         server.wait_for_state(&id, "Completed");
         assert_eq!(fs::read(&destination).unwrap(), body);
@@ -388,6 +376,90 @@ fn http_download_completes_without_blocking_other_rpc_and_releases_slots() {
         assert_eq!(restarted.task_state(&format!("http-{index}")), "Completed");
     }
     restarted.stop();
+}
+
+#[test]
+fn active_http_transfer_can_pause_and_resume() {
+    let _test_guard = server_test_guard();
+    let dir = TestDir::new();
+    let mut server = ServerProcess::start(dir.path());
+    let first = vec![b'a'; 32 * 1024];
+    let second = vec![b'b'; 32 * 1024];
+    let fixture = ChunkedHttpFixture::new(first, second);
+    let destination = dir.output_path("paused-http");
+    server.call(
+        "task.create",
+        Some(json!({
+            "id": "paused-http",
+            "source": fixture.source,
+            "destination": destination.to_string_lossy(),
+        })),
+    );
+    server.call("task.queue", Some(json!({"id": "paused-http"})));
+    fixture.wait_until_first_chunk();
+
+    assert_eq!(
+        server.call("task.pause", Some(json!({"id": "paused-http"}))),
+        true
+    );
+    server.wait_for_state("paused-http", "Paused");
+    assert!(!destination.exists());
+
+    assert_eq!(
+        server.call("task.resume", Some(json!({"id": "paused-http"}))),
+        true
+    );
+    fixture.finish();
+    server.wait_for_state("paused-http", "Completed");
+    let mut expected = vec![b'a'; 32 * 1024];
+    expected.extend(vec![b'b'; 32 * 1024]);
+    assert_eq!(fs::read(&destination).unwrap(), expected);
+    server.stop();
+}
+
+#[test]
+fn active_http_remove_cancels_worker_and_preserves_destination() {
+    let _test_guard = server_test_guard();
+    let dir = TestDir::new();
+    let mut server = ServerProcess::start(dir.path());
+    let first = vec![b'a'; 32 * 1024];
+    let second = vec![b'b'; 32 * 1024];
+    let fixture = ChunkedHttpFixture::new(first, second);
+    let destination = dir.output_path("removed-http");
+    fs::write(&destination, b"old bytes").unwrap();
+    server.call(
+        "task.create",
+        Some(json!({
+            "id": "removed-http",
+            "source": fixture.source,
+            "destination": destination.to_string_lossy(),
+        })),
+    );
+    server.call("task.queue", Some(json!({"id": "removed-http"})));
+    fixture.wait_until_first_chunk();
+    assert_eq!(
+        server.call("task.pause", Some(json!({"id": "removed-http"}))),
+        true
+    );
+    server.wait_for_state("removed-http", "Paused");
+
+    assert_eq!(
+        server.call("task.remove", Some(json!({"id": "removed-http"}))),
+        true
+    );
+    assert!(
+        server
+            .request("task.get", Some(json!({"id": "removed-http"})))
+            .get("error")
+            .is_some()
+    );
+    fixture.finish();
+    assert_eq!(fs::read(&destination).unwrap(), b"old bytes");
+    assert_eq!(
+        fs::read_dir(destination.parent().unwrap()).unwrap().count(),
+        1
+    );
+    server.stop();
 }
 
 #[test]

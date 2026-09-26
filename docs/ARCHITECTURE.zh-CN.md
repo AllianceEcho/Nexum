@@ -65,7 +65,7 @@ Scheduler 在领取任务或恢复任务时检查并发数。HTTP Worker 每写�
 
 ## Engine 与来源
 
-Resolver 接受 HTTP/HTTPS URL、包含 `xt=urn:btih:` 参数的 Magnet URI，以及存在的本地路径；它不会校验 Magnet Hash 本身。Server 仅将 HTTP/HTTPS 路由到传输 Engine，并拒绝数据目录内的目标、符号链接目标，以及指向同一规范路径的并发活动传输。`HttpEngine` 执行阻塞式 GET，最多跟随五次重定向，连接超时为 10 秒，请求超时为 30 分钟，并在每个响应块写入后报告进度。它在目标目录旁的 `.part` 文件中暂存响应，若服务端声明了内容长度则会核对字节数，随后同步并重命名完整文件。普通传输错误会删除暂存文件并保留已有目标文件；进程突然退出可能留下 `.part` 文件。HTTP 不支持暂停/恢复；传输活跃时 Server 会拒绝暂停、恢复和删除该任务。Server 会暴露已持久化的中间进度，但仍没有取消路径。InMemory Engine 只模拟生命周期，不传输字节。当前没有 Magnet 或本地文件传输 Engine。
+Resolver 接受 HTTP/HTTPS URL、包含 `xt=urn:btih:` 参数的 Magnet URI，以及存在的本地路径；它不会校验 Magnet Hash 本身。Server 仅将 HTTP/HTTPS 路由到传输 Engine，并拒绝数据目录内的目标、符号链接目标，以及指向同一规范路径的并发活动传输。`HttpEngine` 执行阻塞式 GET，最多跟随五次重定向，连接超时为 10 秒，请求超时为 30 分钟，并在每个响应块写入后报告进度。它在目标目录旁的 `.part` 文件中暂存响应，若服务端声明了内容长度则会核对字节数，随后同步并重命名完整文件。普通传输错误会删除暂存文件并保留已有目标文件；进程突然退出可能留下 `.part` 文件。Server 的直接 HTTP Worker 路径支持在响应块边界协作式暂停、同一进程内恢复，以及破坏性删除取消。暂停时保留暂存文件和响应，删除时取消 Worker、丢弃暂存文件、删除任务并保留已有目标文件。阻塞中的响应读取可能让 `task.pause` 等到 30 分钟请求超时。`task.remove` 最多等待 Worker 30 秒，Worker 未退出时返回错误；Worker 可能继续阻塞到 HTTP 超时，退出后可以重试删除。这些控制不提供跨重启恢复或 HTTP Range 续传。通用 `HttpEngine` Adapter 仍是同步接口，不声明暂停/恢复能力。InMemory Engine 只模拟生命周期，不传输字节。当前没有 Magnet 或本地文件传输 Engine。
 
 ## 持久化与恢复
 
@@ -73,7 +73,7 @@ Resolver 接受 HTTP/HTTPS URL、包含 `xt=urn:btih:` 参数的 Magnet URI，�
 
 ## Protocol 与客户端
 
-Server 每次从 TCP 连接读取一行 JSON-RPC 请求，对带 `id` 的请求写回一行响应。它会在 Dispatcher 之前处理 `task.start` 和活跃传输保护；Dispatcher 支持 `task.get`、`task.list`、`task.create`、`task.queue`、`task.start`、`task.pause`、`task.resume`、`task.remove`、`server.version` 和 `server.auth`，没有通用的 Task Update 方法。`task.queue` 成功后会在 Core 操作结束时派发符合条件的 HTTP/HTTPS 工作；`task.start` 仍可手动 kick 一个排队任务。`task.get` 和 `task.list` 返回带当前持久化进度以及最近一次传输错误 `error` 字段的 `TaskView`；新一轮领取任务时会清除该字段。Protocol 包含 V1 版本字段和版本查询方法，但没有协商功能集合；除 JSON-RPC `2.0` 信封校验外，也没有版本强制校验。crate 中已有事件信封转换和缓存，Server 尚无订阅或推送通道。
+Server 每次从 TCP 连接读取一行 JSON-RPC 请求，对带 `id` 的请求写回一行响应。它会在 Dispatcher 之前处理 `task.start` 和活跃 HTTP 控制；Dispatcher 支持 `task.get`、`task.list`、`task.create`、`task.queue`、`task.start`、`task.pause`、`task.resume`、`task.remove`、`server.version` 和 `server.auth`，没有通用的 Task Update 方法。对 Server 的活跃 HTTP Worker，`task.pause` 会等待响应块边界确认并持久化为 `Paused`，`task.resume` 在有 Scheduler 槽位时唤醒同一 Worker，`task.remove` 会取消 Worker，最多等待 30 秒后删除任务。超时删除会返回错误，Worker 退出后可以重试。`task.queue` 成功后会在 Core 操作结束时派发符合条件的 HTTP/HTTPS 工作；`task.start` 仍可手动 kick 一个排队任务。`task.get` 和 `task.list` 返回带当前持久化进度以及最近一次传输错误 `error` 字段的 `TaskView`；新一轮领取任务时会清除该字段。Protocol 包含 V1 版本字段和版本查询方法，但没有协商功能集合；除 JSON-RPC `2.0` 信封校验外，也没有版本强制校验。crate 中已有事件信封转换和缓存，Server 尚无订阅或推送通道。
 
 CLI 通过 TCP 协议管理任务、查询 Server。Tauri 2 + React Desktop 通过 Tauri 命令调用 TCP JSON-RPC，包含任务列表、添加与控制视图，并显示任务 `error` 字段。它在操作后或 Server 地址变更时刷新，没有定时轮询或事件推送；Server 地址只保存在组件状态。Manifest V3 Browser 扩展有右键菜单和链接标记 UI，但发送流程向 `/jsonrpc` 发 HTTP 请求，目前没有兼容端点。Popup 写入 Storage 的 `server` 键，后台脚本却读取 `address` 字段，因此保存的地址不会生效。扩展也没有设备选择。
 

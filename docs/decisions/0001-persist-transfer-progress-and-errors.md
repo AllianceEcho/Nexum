@@ -23,7 +23,7 @@ This uses the existing Core, scheduler, repository, and JSON-RPC boundaries. Thr
 
 - Clients can observe useful progress during a transfer and inspect the last failure after a restart.
 - The protocol gains an additive `error` field; clients should ignore unknown response fields.
-- A transfer still starts from byte zero after restart, and active HTTP transfers still do not support cancellation or pause/resume.
+- At the time of this decision, a transfer started from byte zero after restart and active HTTP controls were not implemented; current server controls are defined by [ADR 0003](0003-http-transfer-controls.md), while cross-restart resume remains byte-zero.
 - Intermediate progress creates additional SQLite writes, bounded by the byte and time thresholds.
 
 ## Alternatives Considered

@@ -52,7 +52,7 @@
 - [x] 由 Server 派发器运行 HTTP Engine；CLI 与 Desktop 使用同一个 RPC，并仍可用 `task.start` 手动 kick
 - [x] 将 HTTP 下载暂存到 `.part` 文件，仅在响应完整后重命名到目标路径
 - [x] 为真实传输增加增量进度报告与持久化
-- [ ] 为真实传输增加取消与可用的暂停/恢复能力
+- [x] 为 Server HTTP 传输增加协作式取消和同进程暂停/恢复；跨重启 Range 续传仍在计划中
 
 ### Phase 6 - Nexum Protocol 与 Security
 
@@ -114,11 +114,11 @@
 
 ## 2. 基于当前代码的实施顺序
 
-1. 补齐 HTTP 运行路径：取消或可用的暂停/恢复能力。
+1. 增加跨重启 HTTP 续传：稳定的暂存文件、校验器和 Range 请求。
 2. 补齐 Server/客户端合约：按配置认证的传输、可观察的事件，以及 Browser 可用的端点或桥接。
 3. 接入 Plugin Provider 并执行其声明的权限。
 4. 用真实处理替换模拟的 Media 操作，再对外提供 Automation 与远程设备工作流。
 
 ## 3. 当前重点
 
-Phase 0-9 各自具有不同程度的脚手架和库级覆盖。运行中的 Server 使用 SQLite 持久化任务并在重启后恢复，在任务入队、启动恢复以及 Worker 完成或失败后自动派发符合条件的 HTTP/HTTPS 工作。`task.start` 仍是手动 kick 和兼容接口。Server 会节流持久化中间进度，通过任务视图返回最近一次传输错误，并在传输成功后写入最终进度与完成状态。活跃的 HTTP 传输不能暂停、恢复或删除；当前没有取消能力。Magnet 和本地文件传输仍不受支持。Plugin 与 Media crates 已包含数据类型之外的代码，但 Provider 回调和真实处理尚未接入产品路径。
+Phase 0-9 各自具有不同程度的脚手架和库级覆盖。运行中的 Server 使用 SQLite 持久化任务并在重启后恢复，在任务入队、启动恢复以及 Worker 完成或失败后自动派发符合条件的 HTTP/HTTPS 工作。`task.start` 仍是手动 kick 和兼容接口。Server 会节流持久化中间进度，通过任务视图返回最近一次传输错误，并在传输成功后写入最终进度与完成状态。活跃的 Server HTTP 传输支持协作式块边界暂停、同进程恢复和破坏性删除取消；阻塞中的响应读取可能让 `task.pause` 等到 30 分钟 HTTP 超时，`task.remove` 无法及时停止时会在等待 Worker 30 秒后返回错误。重启恢复仍从零开始。Magnet 和本地文件传输仍不受支持。Plugin 与 Media crates 已包含数据类型之外的代码，但 Provider 回调和真实处理尚未接入产品路径。

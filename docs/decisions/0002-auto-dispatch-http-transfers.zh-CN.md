@@ -25,7 +25,7 @@ Server 是当前唯一同时拥有 RPC 操作、持久化 Core 状态、Schedule
 - 只要有容量，排队一个符合条件的 HTTP/HTTPS 任务即可启动它。
 - Server 重启恢复后，会自动让符合条件的排队 HTTP/HTTPS 任务从零开始传输；不支持的来源或受阻的任务继续排队。
 - HTTP 传输失败时，只要现有重试预算允许，就会自动重试。重试次数和 Scheduler 顺序仍保存在内存中，重启后不会持久化。
-- Magnet 和本地文件传输仍没有 Engine；活跃 HTTP 传输仍不能取消、暂停、恢复或删除。
+- Magnet 和本地文件传输仍没有 Engine。活跃 HTTP 控制由[ADR 0003](0003-http-transfer-controls.zh-CN.md)单独定义；本派发器只负责启动和回收 Worker。
 - Worker panic 或 Server Mutex poisoning 可能导致活动登记未释放；这类进程级故障的恢复不在本决策范围内。
 
 ## 被考虑的替代方案
