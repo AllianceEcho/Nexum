@@ -6,6 +6,7 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 static NEXT_TEMP_DOWNLOAD: AtomicU64 = AtomicU64::new(0);
@@ -37,6 +38,7 @@ pub struct EngineTask {
 pub enum EngineError {
     UnsupportedOperation(&'static str),
     TaskNotFound(TaskId),
+    Cancelled,
     Failed(String),
 }
 
@@ -47,6 +49,7 @@ impl fmt::Display for EngineError {
                 write!(f, "unsupported engine operation: {operation}")
             }
             Self::TaskNotFound(id) => write!(f, "engine task not found: {id}"),
+            Self::Cancelled => write!(f, "engine transfer cancelled"),
             Self::Failed(message) => write!(f, "engine error: {message}"),
         }
     }
@@ -211,6 +214,178 @@ pub struct HttpEngine {
     next_handle: u64,
 }
 
+/// Shared control state for a blocking HTTP transfer.
+///
+/// A control can be cloned and sent to the thread running
+/// [`HttpEngine::download_to_with_control`]. Pause requests are acknowledged at
+/// a response chunk boundary, so [`Self::request_pause`] does not return until
+/// the worker is no longer reading the response. Cancellation wakes a paused
+/// worker and makes the download return [`EngineError::Cancelled`].
+#[derive(Clone, Default)]
+pub struct HttpTransferControl {
+    inner: Arc<(Mutex<HttpTransferControlState>, Condvar)>,
+}
+
+#[derive(Default)]
+struct HttpTransferControlState {
+    pause_requested: bool,
+    paused: bool,
+    cancelled: bool,
+    committed: bool,
+    finished: bool,
+}
+
+impl HttpTransferControl {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Requests a pause and waits until the worker reaches a chunk boundary.
+    ///
+    /// A transfer which has already finished has no work left to pause and is
+    /// treated as successfully paused. If cancellation wins the race, the
+    /// request returns [`EngineError::Cancelled`].
+    pub fn request_pause(&self) -> Result<(), EngineError> {
+        let (lock, wake) = &*self.inner;
+        let mut state = lock.lock().expect("HTTP transfer control mutex poisoned");
+        if state.cancelled {
+            return Err(EngineError::Cancelled);
+        }
+        if state.finished || state.paused {
+            return Ok(());
+        }
+
+        state.pause_requested = true;
+        wake.notify_all();
+        while !state.paused && !state.cancelled && !state.finished {
+            state = wake
+                .wait(state)
+                .expect("HTTP transfer control mutex poisoned while waiting");
+        }
+
+        if state.cancelled {
+            Err(EngineError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Clears a pause request and wakes a worker waiting at a chunk boundary.
+    pub fn resume(&self) -> Result<(), EngineError> {
+        let (lock, wake) = &*self.inner;
+        let mut state = lock.lock().expect("HTTP transfer control mutex poisoned");
+        if state.cancelled {
+            return Err(EngineError::Cancelled);
+        }
+        state.pause_requested = false;
+        state.paused = false;
+        wake.notify_all();
+        Ok(())
+    }
+
+    /// Cancels the transfer. This method is idempotent and wakes a paused
+    /// worker so it can return [`EngineError::Cancelled`].
+    pub fn cancel(&self) {
+        let (lock, wake) = &*self.inner;
+        let mut state = lock.lock().expect("HTTP transfer control mutex poisoned");
+        if state.finished {
+            return;
+        }
+        state.cancelled = true;
+        state.pause_requested = false;
+        state.paused = false;
+        wake.notify_all();
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.with_state(|state| state.paused)
+    }
+
+    pub fn is_pause_requested(&self) -> bool {
+        self.with_state(|state| state.pause_requested)
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.with_state(|state| state.cancelled)
+    }
+
+    /// Returns whether the completed response has replaced the destination.
+    pub fn is_committed(&self) -> bool {
+        self.with_state(|state| state.committed)
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.with_state(|state| state.finished)
+    }
+
+    fn with_state<T>(&self, read: impl FnOnce(&HttpTransferControlState) -> T) -> T {
+        let (lock, _) = &*self.inner;
+        let state = lock.lock().expect("HTTP transfer control mutex poisoned");
+        read(&state)
+    }
+
+    fn wait_if_paused(&self) -> Result<(), EngineError> {
+        let (lock, wake) = &*self.inner;
+        let mut state = lock.lock().expect("HTTP transfer control mutex poisoned");
+        if state.cancelled {
+            return Err(EngineError::Cancelled);
+        }
+        if state.pause_requested {
+            state.paused = true;
+            wake.notify_all();
+            while state.pause_requested && !state.cancelled {
+                state = wake
+                    .wait(state)
+                    .expect("HTTP transfer control mutex poisoned while waiting");
+            }
+            state.paused = false;
+            wake.notify_all();
+        }
+        if state.cancelled {
+            Err(EngineError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn check_cancelled(&self) -> Result<(), EngineError> {
+        if self.is_cancelled() {
+            Err(EngineError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn mark_finished(&self) {
+        let (lock, wake) = &*self.inner;
+        let mut state = lock.lock().expect("HTTP transfer control mutex poisoned");
+        state.finished = true;
+        state.pause_requested = false;
+        state.paused = false;
+        wake.notify_all();
+    }
+
+    fn finish_download(
+        &self,
+        temporary: TemporaryDownload,
+        destination: &Path,
+    ) -> Result<(), EngineError> {
+        let (lock, wake) = &*self.inner;
+        let mut state = lock.lock().expect("HTTP transfer control mutex poisoned");
+        if state.cancelled {
+            return Err(EngineError::Cancelled);
+        }
+
+        temporary.finish(destination)?;
+        state.committed = true;
+        state.finished = true;
+        state.pause_requested = false;
+        state.paused = false;
+        wake.notify_all();
+        Ok(())
+    }
+}
+
 struct TemporaryDownload {
     path: PathBuf,
     file: Option<std::fs::File>,
@@ -314,16 +489,53 @@ impl HttpEngine {
         &self,
         source: &str,
         destination: &str,
+        on_progress: F,
+    ) -> Result<Progress, EngineError>
+    where
+        F: FnMut(Progress) -> Result<(), EngineError>,
+    {
+        let control = HttpTransferControl::new();
+        self.download_to_with_control(source, destination, &control, on_progress)
+    }
+
+    /// Downloads a complete HTTP response with cooperative pause and cancel
+    /// control, reporting each written chunk through `on_progress`.
+    ///
+    /// Pause requests take effect at a response chunk boundary. Cancellation
+    /// drops the temporary file and leaves the final destination untouched.
+    pub fn download_to_with_control<F>(
+        &self,
+        source: &str,
+        destination: &str,
+        control: &HttpTransferControl,
         mut on_progress: F,
     ) -> Result<Progress, EngineError>
     where
         F: FnMut(Progress) -> Result<(), EngineError>,
     {
+        let result =
+            self.download_to_with_control_inner(source, destination, control, &mut on_progress);
+        control.mark_finished();
+        result
+    }
+
+    fn download_to_with_control_inner<F>(
+        &self,
+        source: &str,
+        destination: &str,
+        control: &HttpTransferControl,
+        on_progress: &mut F,
+    ) -> Result<Progress, EngineError>
+    where
+        F: FnMut(Progress) -> Result<(), EngineError>,
+    {
+        control.check_cancelled()?;
         let mut response = self
             .client
             .get(source)
             .send()
             .map_err(|error| EngineError::Failed(error.to_string()))?;
+        control.check_cancelled()?;
         if !response.status().is_success() {
             return Err(EngineError::Failed(format!(
                 "HTTP GET returned {}",
@@ -338,12 +550,14 @@ impl HttpEngine {
         let mut buffer = [0u8; 32 * 1024];
 
         loop {
+            control.wait_if_paused()?;
             let read = response
                 .read(&mut buffer)
                 .map_err(|error| EngineError::Failed(error.to_string()))?;
             if read == 0 {
                 break;
             }
+            control.check_cancelled()?;
             temporary
                 .file
                 .as_mut()
@@ -352,8 +566,10 @@ impl HttpEngine {
                 .map_err(|error| EngineError::Failed(error.to_string()))?;
             downloaded += read as u64;
             on_progress(Progress::new(downloaded, total))?;
+            control.wait_if_paused()?;
         }
 
+        control.check_cancelled()?;
         if let Some(expected) = total
             && downloaded != expected
         {
@@ -362,7 +578,8 @@ impl HttpEngine {
             )));
         }
 
-        temporary.finish(destination)?;
+        control.check_cancelled()?;
+        control.finish_download(temporary, destination)?;
         Ok(Progress::new(downloaded, total))
     }
 }
@@ -594,7 +811,7 @@ mod tests {
             stream.flush().unwrap();
             first_sent_tx.send(()).unwrap();
             release_rx.recv().unwrap();
-            stream.write_all(&second).unwrap();
+            let _ = stream.write_all(&second);
         });
         (address, first_sent, release_tx, worker)
     }
@@ -705,6 +922,82 @@ mod tests {
         server.join().unwrap();
         assert_eq!(result, Progress::new(64 * 1024, Some(64 * 1024)));
         assert_eq!(std::fs::read(&destination).unwrap().len(), 64 * 1024);
+    }
+
+    #[test]
+    fn controlled_http_download_pauses_and_resumes_at_chunk_boundary() {
+        let dir = TestDir::new();
+        let destination = dir.0.join("file.bin");
+        let first = vec![b'a'; 32 * 1024];
+        let second = vec![b'b'; 32 * 1024];
+        let (source, first_sent, release, server) = serve_in_chunks(first, second);
+        let control = HttpTransferControl::new();
+        let (progress_tx, progress_rx) = mpsc::channel();
+        let source_for_worker = source.clone();
+        let destination_for_worker = destination.to_str().unwrap().to_owned();
+        let control_for_worker = control.clone();
+        let worker = thread::spawn(move || {
+            HttpEngine::new().download_to_with_control(
+                &source_for_worker,
+                &destination_for_worker,
+                &control_for_worker,
+                |progress| {
+                    progress_tx.send(progress.clone()).unwrap();
+                    Ok(())
+                },
+            )
+        });
+
+        first_sent.recv().unwrap();
+        progress_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        control.request_pause().unwrap();
+        assert!(control.is_paused());
+        assert!(!destination.exists());
+
+        control.resume().unwrap();
+        release.send(()).unwrap();
+        let result = worker.join().unwrap().unwrap();
+        server.join().unwrap();
+
+        assert_eq!(result, Progress::new(64 * 1024, Some(64 * 1024)));
+        assert_eq!(std::fs::read(&destination).unwrap().len(), 64 * 1024);
+        assert!(control.is_finished());
+    }
+
+    #[test]
+    fn controlled_http_download_cancels_without_replacing_destination() {
+        let dir = TestDir::new();
+        let destination = dir.0.join("file.bin");
+        std::fs::write(&destination, b"old bytes").unwrap();
+        let first = vec![b'a'; 32 * 1024];
+        let second = vec![b'b'; 32 * 1024];
+        let (source, first_sent, release, server) = serve_in_chunks(first, second);
+        let control = HttpTransferControl::new();
+        let source_for_worker = source.clone();
+        let destination_for_worker = destination.to_str().unwrap().to_owned();
+        let control_for_worker = control.clone();
+        let worker = thread::spawn(move || {
+            HttpEngine::new().download_to_with_control(
+                &source_for_worker,
+                &destination_for_worker,
+                &control_for_worker,
+                |_| Ok(()),
+            )
+        });
+
+        first_sent.recv().unwrap();
+        control.request_pause().unwrap();
+        control.cancel();
+        assert!(matches!(
+            worker.join().unwrap(),
+            Err(EngineError::Cancelled)
+        ));
+        release.send(()).unwrap();
+        server.join().unwrap();
+
+        assert_eq!(std::fs::read(&destination).unwrap(), b"old bytes");
+        assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 1);
+        assert!(control.is_finished());
     }
 
     #[test]

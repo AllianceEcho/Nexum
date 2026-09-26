@@ -150,28 +150,40 @@ impl HttpFixture {
     }
 
     fn with_status(status: &'static str, body: &'static [u8]) -> Self {
+        Self::with_status_and_attempts(status, body, 1)
+    }
+
+    fn with_status_and_attempts(
+        status: &'static str,
+        body: &'static [u8],
+        attempts: usize,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let source = format!("http://{}/file", listener.local_addr().unwrap());
         let (connected_tx, connected) = mpsc::channel();
         let (release, release_rx) = mpsc::channel();
         let worker = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(5)))
+            for attempt in 0..attempts {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut method = [0u8; 3];
+                stream.read_exact(&mut method).unwrap();
+                assert_eq!(&method, b"GET");
+                write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )
                 .unwrap();
-            let mut method = [0u8; 3];
-            stream.read_exact(&mut method).unwrap();
-            assert_eq!(&method, b"GET");
-            write!(
-                stream,
-                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                body.len()
-            )
-            .unwrap();
-            stream.flush().unwrap();
-            connected_tx.send(()).unwrap();
-            release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-            let _ = stream.write_all(body);
+                stream.flush().unwrap();
+                if attempt == 0 {
+                    connected_tx.send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                }
+                let _ = stream.write_all(body);
+            }
         });
         Self {
             source,
@@ -258,7 +270,7 @@ fn tasks_survive_server_restart_and_active_states_requeue() {
             "task.create",
             Some(json!({
                 "id": id,
-                "source": format!("https://example.com/{id}"),
+                "source": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
                 "destination": dir.output_path(id).to_string_lossy(),
             })),
         );
@@ -295,6 +307,40 @@ fn tasks_survive_server_restart_and_active_states_requeue() {
 }
 
 #[test]
+fn queued_http_tasks_dispatch_after_server_restart() {
+    let _test_guard = server_test_guard();
+    let dir = TestDir::new();
+    let fixture = HttpFixture::new(b"recovered response");
+    let mut server = ServerProcess::start(dir.path());
+    let destination = dir.output_path("recovered-http");
+    server.call(
+        "task.create",
+        Some(json!({
+            "id": "recovered-http",
+            "source": fixture.source,
+            "destination": destination.to_string_lossy(),
+        })),
+    );
+    server.stop();
+
+    let mut repository = SqliteRepository::open(dir.path().join("nexum.sqlite")).unwrap();
+    let mut task = repository
+        .get(&TaskId::from("recovered-http"))
+        .unwrap()
+        .unwrap();
+    task.state = TaskState::Queued;
+    repository.update(task).unwrap();
+    drop(repository);
+
+    let restarted = ServerProcess::start(dir.path());
+    fixture.wait_until_connected();
+    assert_eq!(restarted.task_state("recovered-http"), "Downloading");
+    fixture.finish();
+    restarted.wait_for_state("recovered-http", "Completed");
+    assert_eq!(fs::read(destination).unwrap(), b"recovered response");
+}
+
+#[test]
 fn http_download_completes_without_blocking_other_rpc_and_releases_slots() {
     let _test_guard = server_test_guard();
     let dir = TestDir::new();
@@ -314,22 +360,9 @@ fn http_download_completes_without_blocking_other_rpc_and_releases_slots() {
             })),
         );
         server.call("task.queue", Some(json!({"id": id})));
-        assert_eq!(server.call("task.start", None), id);
         fixture.wait_until_connected();
         assert_eq!(server.call("server.version", None), "1");
         assert_eq!(server.task_state(&id), "Downloading");
-        assert!(
-            server
-                .request("task.pause", Some(json!({"id": id})))
-                .get("error")
-                .is_some()
-        );
-        assert!(
-            server
-                .request("task.remove", Some(json!({"id": id})))
-                .get("error")
-                .is_some()
-        );
         fixture.finish();
         server.wait_for_state(&id, "Completed");
         assert_eq!(fs::read(&destination).unwrap(), body);
@@ -343,6 +376,127 @@ fn http_download_completes_without_blocking_other_rpc_and_releases_slots() {
         assert_eq!(restarted.task_state(&format!("http-{index}")), "Completed");
     }
     restarted.stop();
+}
+
+#[test]
+fn active_http_transfer_can_pause_and_resume() {
+    let _test_guard = server_test_guard();
+    let dir = TestDir::new();
+    let mut server = ServerProcess::start(dir.path());
+    let first = vec![b'a'; 32 * 1024];
+    let second = vec![b'b'; 32 * 1024];
+    let fixture = ChunkedHttpFixture::new(first, second);
+    let destination = dir.output_path("paused-http");
+    server.call(
+        "task.create",
+        Some(json!({
+            "id": "paused-http",
+            "source": fixture.source,
+            "destination": destination.to_string_lossy(),
+        })),
+    );
+    server.call("task.queue", Some(json!({"id": "paused-http"})));
+    fixture.wait_until_first_chunk();
+
+    assert_eq!(
+        server.call("task.pause", Some(json!({"id": "paused-http"}))),
+        true
+    );
+    server.wait_for_state("paused-http", "Paused");
+    assert!(!destination.exists());
+
+    assert_eq!(
+        server.call("task.resume", Some(json!({"id": "paused-http"}))),
+        true
+    );
+    fixture.finish();
+    server.wait_for_state("paused-http", "Completed");
+    let mut expected = vec![b'a'; 32 * 1024];
+    expected.extend(vec![b'b'; 32 * 1024]);
+    assert_eq!(fs::read(&destination).unwrap(), expected);
+    server.stop();
+}
+
+#[test]
+fn active_http_remove_cancels_worker_and_preserves_destination() {
+    let _test_guard = server_test_guard();
+    let dir = TestDir::new();
+    let mut server = ServerProcess::start(dir.path());
+    let first = vec![b'a'; 32 * 1024];
+    let second = vec![b'b'; 32 * 1024];
+    let fixture = ChunkedHttpFixture::new(first, second);
+    let destination = dir.output_path("removed-http");
+    fs::write(&destination, b"old bytes").unwrap();
+    server.call(
+        "task.create",
+        Some(json!({
+            "id": "removed-http",
+            "source": fixture.source,
+            "destination": destination.to_string_lossy(),
+        })),
+    );
+    server.call("task.queue", Some(json!({"id": "removed-http"})));
+    fixture.wait_until_first_chunk();
+    assert_eq!(
+        server.call("task.pause", Some(json!({"id": "removed-http"}))),
+        true
+    );
+    server.wait_for_state("removed-http", "Paused");
+
+    assert_eq!(
+        server.call("task.remove", Some(json!({"id": "removed-http"}))),
+        true
+    );
+    assert!(
+        server
+            .request("task.get", Some(json!({"id": "removed-http"})))
+            .get("error")
+            .is_some()
+    );
+    fixture.finish();
+    assert_eq!(fs::read(&destination).unwrap(), b"old bytes");
+    assert_eq!(
+        fs::read_dir(destination.parent().unwrap()).unwrap().count(),
+        1
+    );
+    server.stop();
+}
+
+#[test]
+fn queued_http_tasks_dispatch_without_explicit_start() {
+    let _test_guard = server_test_guard();
+    let dir = TestDir::new();
+    let mut server = ServerProcess::start(dir.path());
+    let first = HttpFixture::new(b"first response");
+    let second = HttpFixture::new(b"second response");
+
+    for (id, source) in [("first", &first.source), ("second", &second.source)] {
+        server.call(
+            "task.create",
+            Some(json!({
+                "id": id,
+                "source": source,
+                "destination": dir.output_path(id).to_string_lossy(),
+            })),
+        );
+        server.call("task.queue", Some(json!({"id": id})));
+    }
+
+    first.wait_until_connected();
+    second.wait_until_connected();
+    first.finish();
+    second.finish();
+    server.wait_for_state("first", "Completed");
+    server.wait_for_state("second", "Completed");
+    assert_eq!(
+        fs::read(dir.output_path("first")).unwrap(),
+        b"first response"
+    );
+    assert_eq!(
+        fs::read(dir.output_path("second")).unwrap(),
+        b"second response"
+    );
+    server.stop();
 }
 
 #[test]
@@ -364,7 +518,6 @@ fn http_download_persists_incremental_progress_for_rpc_reads() {
         })),
     );
     server.call("task.queue", Some(json!({"id": id})));
-    assert_eq!(server.call("task.start", None), id);
     fixture.wait_until_first_chunk();
 
     let mut observed = 0;
@@ -387,7 +540,7 @@ fn http_download_persists_incremental_progress_for_rpc_reads() {
 }
 
 #[test]
-fn unsupported_sources_stay_queued_and_http_errors_requeue() {
+fn unsupported_sources_stay_queued_and_http_errors_are_retried() {
     let _test_guard = server_test_guard();
     let dir = TestDir::new();
     let mut server = ServerProcess::start(dir.path());
@@ -403,7 +556,8 @@ fn unsupported_sources_stay_queued_and_http_errors_requeue() {
     assert!(server.request("task.start", None).get("error").is_some());
     assert_eq!(server.task_state("magnet"), "Queued");
 
-    let fixture = HttpFixture::with_status("503 Service Unavailable", b"retry later");
+    let fixture =
+        HttpFixture::with_status_and_attempts("503 Service Unavailable", b"retry later", 4);
     let destination = dir.output_path("failed-http");
     server.call(
         "task.create",
@@ -414,29 +568,23 @@ fn unsupported_sources_stay_queued_and_http_errors_requeue() {
         })),
     );
     server.call("task.queue", Some(json!({"id": "failed-http"})));
-    assert_eq!(server.call("task.start", None), "failed-http");
     assert_eq!(server.task_state("magnet"), "Queued");
     fixture.wait_until_connected();
     fixture.finish();
-    server.wait_for_state("failed-http", "Queued");
+    server.wait_for_state("failed-http", "Failed");
     assert!(!destination.exists());
     let failed = server.call("task.get", Some(json!({"id": "failed-http"})));
-    assert!(
-        failed["error"]
-            .as_str()
-            .is_some_and(|message| message.contains("HTTP GET returned 503"))
-    );
+    let error = failed["error"]
+        .as_str()
+        .filter(|message| !message.is_empty())
+        .expect("failed HTTP task should persist an error");
     server.call("task.remove", Some(json!({"id": "magnet"})));
     server.stop();
 
     let mut restarted = ServerProcess::start(dir.path());
     let failed = restarted.call("task.get", Some(json!({"id": "failed-http"})));
-    assert_eq!(failed["state"], "Queued");
-    assert!(
-        failed["error"]
-            .as_str()
-            .is_some_and(|message| message.contains("HTTP GET returned 503"))
-    );
+    assert_eq!(failed["state"], "Failed");
+    assert_eq!(failed["error"].as_str(), Some(error));
     restarted.stop();
 }
 
@@ -488,7 +636,6 @@ fn http_downloads_to_the_same_destination_do_not_overlap() {
         server.call("task.queue", Some(json!({"id": id})));
     }
 
-    assert_eq!(server.call("task.start", None), "first");
     first.wait_until_connected();
     assert!(server.request("task.start", None).get("error").is_some());
     assert_eq!(server.task_state("second"), "Queued");
@@ -496,7 +643,6 @@ fn http_downloads_to_the_same_destination_do_not_overlap() {
     server.wait_for_state("first", "Completed");
     assert_eq!(fs::read(&destination).unwrap(), b"first response");
 
-    assert_eq!(server.call("task.start", None), "second");
     second.wait_until_connected();
     second.finish();
     server.wait_for_state("second", "Completed");
@@ -541,7 +687,6 @@ fn second_server_cannot_recover_a_live_servers_tasks() {
         })),
     );
     first.call("task.queue", Some(json!({"id": "running"})));
-    first.call("task.start", None);
     fixture.wait_until_connected();
     assert_eq!(first.task_state("running"), "Downloading");
 
@@ -567,7 +712,7 @@ fn second_server_cannot_recover_a_live_servers_tasks() {
     first.stop();
     fixture.finish();
     let mut restarted = ServerProcess::start(dir.path());
-    assert_eq!(restarted.task_state("running"), "Queued");
+    assert_eq!(restarted.task_state("running"), "Failed");
     restarted.stop();
 }
 
