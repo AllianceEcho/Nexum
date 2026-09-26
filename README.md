@@ -4,14 +4,14 @@
 
 > A Rust workspace for download task management and client integrations.
 
-Nexum is under active development. Its runnable path is a local TCP JSON-RPC server for creating and controlling tasks. The server stores tasks in SQLite. Starting a queued HTTP/HTTPS task downloads it to the destination through a background worker.
+Nexum is under active development. Its runnable path is a local TCP JSON-RPC server for creating and controlling tasks. The server stores tasks in SQLite. Queuing an HTTP/HTTPS task makes it eligible for automatic dispatch to a background worker when a scheduler slot and destination are available.
 
 [![CI](https://github.com/liveait/Nexum/actions/workflows/ci.yml/badge.svg)](https://github.com/liveait/Nexum/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Current status
 
-The CLI and early Tauri desktop client can call the local server; the desktop client requires the server to run separately. The server opens `nexum.sqlite` under its data directory (default `./data`) and recovers stored tasks on startup. `task.start` selects HTTP/HTTPS tasks for a real download. Magnet and local-file sources can be created but have no transfer path yet. The browser extension prototype calls HTTP `/jsonrpc`, which the TCP-only server does not provide, so it cannot submit tasks to this server yet.
+The CLI and early Tauri desktop client can call the local server; the desktop client requires the server to run separately. The server opens `nexum.sqlite` under its data directory (default `./data`) and recovers stored tasks on startup. Queuing a supported HTTP/HTTPS task, restarting the server with a queued task, or completing/failing an active HTTP transfer causes the server to fill available scheduler slots automatically. `task.start` remains a manual kick and compatibility method for starting one queued HTTP/HTTPS task, after which the same dispatcher fills other available slots. Magnet and local-file sources can be created but have no transfer path yet. The browser extension prototype calls HTTP `/jsonrpc`, which the TCP-only server does not provide, so it cannot submit tasks to this server yet.
 
 Authentication, TLS, rate limiting, executable plugins, and real media processing are not active in the running server. See [Architecture](docs/ARCHITECTURE.md) for the code-level boundaries and current call paths, and the [Development Plan](docs/DEVELOPMENT_PLAN.md) for remaining integration work.
 
@@ -28,11 +28,10 @@ In another terminal, use the CLI:
 ```bash
 cargo run -p nexum-cli -- task create task-1 https://example.com/ ./example.html
 cargo run -p nexum-cli -- task queue task-1
-cargo run -p nexum-cli -- task start
 cargo run -p nexum-cli -- task list
 ```
 
-`task start` returns after launching an HTTP worker. The worker reports progress after each response chunk; the server persists an intermediate snapshot when at least 1 MiB has arrived or 250 ms have elapsed since the previous write, then flushes the final snapshot before marking the task `Completed`. On success it writes `./example.html` and records the final byte count; `task list` may show `Downloading` until then. The `task.get` and `task.list` views expose the persisted progress and an `error` field containing the most recent transfer error. The destination is replaced only after the full response is staged in a temporary `.part` file. A failed transfer preserves an existing destination, logs the failure, stores the error on the task, and requeues it while the retry policy allows; the default policy permits three retries, but another `task start` is still required to run a queued retry. Claiming a new attempt resets progress and clears the previous error. Active HTTP transfers still cannot be paused, resumed, or cancelled. A task survives a server restart, but an interrupted `Downloading` task is reset to `Queued` and starts from the beginning only after another `task start`. The server binds to `127.0.0.1:39100` by default; use `--port PORT` on the server or `--server ADDR` on the CLI to change the connection. The server does not enforce authentication, even when `--require-auth` is set, so do not expose it to an untrusted network. See the [Development Guide](docs/DEVELOPMENT.md) for client setup, all Rust checks, and platform dependencies.
+`task.queue` returns after the task is persisted and the server has attempted to fill available HTTP worker slots. `task.start` remains available as a manual kick and returns after launching one HTTP worker. Workers report progress after each response chunk; the server persists an intermediate snapshot when at least 1 MiB has arrived or 250 ms have elapsed since the previous write, then flushes the final snapshot before marking the task `Completed`. On success it writes `./example.html` and records the final byte count; `task list` may show `Downloading` until then. The `task.get` and `task.list` views expose the persisted progress and an `error` field containing the most recent transfer error. The destination is replaced only after the full response is staged in a temporary `.part` file. A failed transfer preserves an existing destination, logs the failure, stores the error on the task, and requeues it while the retry policy allows; the server automatically dispatches that retry when a slot is available. The default policy permits three retries. Claiming a new attempt resets progress and clears the previous error. Active HTTP transfers still cannot be paused, resumed, or cancelled. A task survives a server restart; an interrupted `Downloading` task is reset to `Queued`, and an eligible HTTP/HTTPS task is automatically dispatched from the beginning after recovery. The server binds to `127.0.0.1:39100` by default; use `--port PORT` on the server or `--server ADDR` on the CLI to change the connection. The server does not enforce authentication, even when `--require-auth` is set, so do not expose it to an untrusted network. See the [Development Guide](docs/DEVELOPMENT.md) for client setup, all Rust checks, and platform dependencies.
 
 ## Documentation and contribution
 
@@ -40,6 +39,7 @@ cargo run -p nexum-cli -- task list
 - [Development Guide](docs/DEVELOPMENT.md)
 - [Development Plan](docs/DEVELOPMENT_PLAN.md)
 - [Changelog](CHANGELOG.md)
+- [Architecture Decisions](docs/decisions/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Governance](GOVERNANCE.md)
 - [Chinese README](README.zh-CN.md)

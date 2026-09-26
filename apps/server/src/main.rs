@@ -32,6 +32,7 @@ struct ServerState {
     active_destinations: HashSet<PathBuf>,
 }
 
+#[derive(Clone)]
 struct HttpTransfer {
     id: TaskId,
     source: String,
@@ -155,19 +156,34 @@ fn run_http_transfer(state: Arc<Mutex<ServerState>>, transfer: HttpTransfer) {
             result
         },
     );
-    let mut state = state.lock().expect("server state mutex poisoned");
-    match result {
-        Ok(progress) => {
-            let outcome = state
-                .core
-                .update_progress(&transfer.id, progress)
-                .and_then(|()| state.core.finish_task(&transfer.id, TaskState::Completed));
-            if let Err(error) = outcome {
-                eprintln!("task {} completion failed: {error:?}", transfer.id);
+    {
+        let mut state = state.lock().expect("server state mutex poisoned");
+        match result {
+            Ok(progress) => {
+                let outcome = state
+                    .core
+                    .update_progress(&transfer.id, progress)
+                    .and_then(|()| state.core.finish_task(&transfer.id, TaskState::Completed));
+                if let Err(error) = outcome {
+                    eprintln!("task {} completion failed: {error:?}", transfer.id);
+                    if let Err(finish_error) = state.core.finish_task_with_error(
+                        &transfer.id,
+                        TaskState::Failed,
+                        format!("could not finalize HTTP transfer: {error:?}"),
+                    ) {
+                        eprintln!(
+                            "task {} failure state could not be saved: {finish_error:?}",
+                            transfer.id
+                        );
+                    }
+                }
+            }
+            Err(error) => {
+                eprintln!("task {} HTTP transfer failed: {error}", transfer.id);
                 if let Err(finish_error) = state.core.finish_task_with_error(
                     &transfer.id,
                     TaskState::Failed,
-                    format!("could not finalize HTTP transfer: {error:?}"),
+                    error.to_string(),
                 ) {
                     eprintln!(
                         "task {} failure state could not be saved: {finish_error:?}",
@@ -176,22 +192,11 @@ fn run_http_transfer(state: Arc<Mutex<ServerState>>, transfer: HttpTransfer) {
                 }
             }
         }
-        Err(error) => {
-            eprintln!("task {} HTTP transfer failed: {error}", transfer.id);
-            if let Err(finish_error) = state.core.finish_task_with_error(
-                &transfer.id,
-                TaskState::Failed,
-                error.to_string(),
-            ) {
-                eprintln!(
-                    "task {} failure state could not be saved: {finish_error:?}",
-                    transfer.id
-                );
-            }
-        }
+        state.active_http.remove(&transfer.id);
+        state.active_destinations.remove(&transfer.destination_path);
     }
-    state.active_http.remove(&transfer.id);
-    state.active_destinations.remove(&transfer.destination_path);
+
+    dispatch_available_http_tasks(&state);
 }
 
 fn checked_destination(destination: &str, data_dir: &Path) -> io::Result<PathBuf> {
@@ -248,72 +253,141 @@ fn reply_error(request: &RpcRequest, error: RpcErrorObject) -> Option<RpcRespons
         .map(|id| RpcResponse::error(Some(id), error))
 }
 
-fn start_http_task(state: &Arc<Mutex<ServerState>>, request: &RpcRequest) -> Option<RpcResponse> {
-    let mut locked = state.lock().expect("server state mutex poisoned");
-    let Some(next_id) = locked
+fn claim_next_http_transfer(
+    state: &mut ServerState,
+) -> Result<Option<HttpTransfer>, RpcErrorObject> {
+    let Some(next_id) = state
         .core
         .scheduler
         .next_queued_task_matching(|id| {
-            locked.core.tasks.get(id).is_some_and(|task| {
+            state.core.tasks.get(id).is_some_and(|task| {
                 matches!(
-                    locked.core.resolve_source(task.source.as_str()),
+                    state.core.resolve_source(task.source.as_str()),
                     Ok(result) if matches!(result.kind, ResolveKind::Http | ResolveKind::Https)
-                ) && checked_destination(task.destination.as_str(), &locked.data_dir)
-                    .is_ok_and(|path| !locked.active_destinations.contains(&path))
+                ) && checked_destination(task.destination.as_str(), &state.data_dir)
+                    .is_ok_and(|path| !state.active_destinations.contains(&path))
             })
         })
         .cloned()
     else {
-        let error = if locked.core.scheduler.next_queued_task().is_some() {
-            RpcErrorObject::invalid_params(
-                "no queued HTTP/HTTPS task has an available, permitted destination",
-            )
-        } else {
-            RpcErrorObject::task_not_found("no queued task")
-        };
-        return reply_error(request, error);
+        return Ok(None);
     };
-    let task = locked.core.tasks.get(&next_id).expect("queued task exists");
+    let task = state
+        .core
+        .tasks
+        .get(&next_id)
+        .expect("queued task exists")
+        .clone();
     let source = task.source.as_str().to_owned();
-    let destination_path = checked_destination(task.destination.as_str(), &locked.data_dir)
+    let destination_path = checked_destination(task.destination.as_str(), &state.data_dir)
         .expect("matching queued task has a permitted destination");
     let destination = destination_path
         .to_str()
         .expect("RPC destination path is valid UTF-8")
         .to_owned();
-    let id = match locked.core.claim_queued(&next_id) {
+    let id = match state.core.claim_queued(&next_id) {
         Ok(true) => next_id,
-        Ok(false) => return reply_error(request, RpcErrorObject::task_not_found("no queued task")),
-        Err(error) => {
-            return reply_error(
-                request,
-                RpcErrorObject::internal_error(format!("{error:?}")),
-            );
-        }
+        Ok(false) => return Ok(None),
+        Err(error) => return Err(RpcErrorObject::internal_error(format!("{error:?}"))),
     };
-    locked.active_http.insert(id.clone());
-    locked.active_destinations.insert(destination_path.clone());
-    drop(locked);
+    state.active_http.insert(id.clone());
+    state.active_destinations.insert(destination_path.clone());
 
-    let transfer = HttpTransfer {
-        id: id.clone(),
+    Ok(Some(HttpTransfer {
+        id,
         source,
         destination,
-        destination_path: destination_path.clone(),
-    };
+        destination_path,
+    }))
+}
+
+fn spawn_http_transfer(
+    state: &Arc<Mutex<ServerState>>,
+    transfer: HttpTransfer,
+) -> Result<(), (HttpTransfer, io::Error)> {
+    let id = transfer.id.clone();
+    let failed_transfer = transfer.clone();
     let worker_state = Arc::clone(state);
-    if let Err(error) = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name(format!("nexum-http-{id}"))
         .spawn(move || run_http_transfer(worker_state, transfer))
-    {
-        let mut locked = state.lock().expect("server state mutex poisoned");
-        locked.active_http.remove(&id);
-        locked.active_destinations.remove(&destination_path);
-        let _ = locked
+        .map(|_| ())
+        .map_err(|error| (failed_transfer, error))
+}
+
+fn handle_http_spawn_failure(
+    state: &Arc<Mutex<ServerState>>,
+    transfer: &HttpTransfer,
+    error: &io::Error,
+) {
+    let mut locked = state.lock().expect("server state mutex poisoned");
+    locked.active_http.remove(&transfer.id);
+    locked
+        .active_destinations
+        .remove(&transfer.destination_path);
+    if let Err(finish_error) =
+        locked
             .core
-            .finish_task_with_error(&id, TaskState::Failed, error.to_string());
+            .finish_task_with_error(&transfer.id, TaskState::Failed, error.to_string())
+    {
+        eprintln!(
+            "task {} failure state could not be saved: {finish_error:?}",
+            transfer.id
+        );
+    }
+}
+
+fn dispatch_available_http_tasks(state: &Arc<Mutex<ServerState>>) {
+    loop {
+        let transfer = {
+            let mut locked = state.lock().expect("server state mutex poisoned");
+            match claim_next_http_transfer(&mut locked) {
+                Ok(Some(transfer)) => transfer,
+                Ok(None) => break,
+                Err(error) => {
+                    eprintln!("could not claim queued HTTP task: {}", error.message);
+                    break;
+                }
+            }
+        };
+
+        if let Err((transfer, error)) = spawn_http_transfer(state, transfer) {
+            eprintln!("could not start HTTP worker: {error}");
+            // Leave a failed worker claim queued for a later explicit kick, rather
+            // than spinning if the process cannot create any more threads.
+            handle_http_spawn_failure(state, &transfer, &error);
+            break;
+        }
+    }
+}
+
+fn start_http_task(state: &Arc<Mutex<ServerState>>, request: &RpcRequest) -> Option<RpcResponse> {
+    let transfer = {
+        let mut locked = state.lock().expect("server state mutex poisoned");
+        match claim_next_http_transfer(&mut locked) {
+            Ok(Some(transfer)) => transfer,
+            Ok(None) => {
+                let error = if locked.core.scheduler.next_queued_task().is_some() {
+                    RpcErrorObject::invalid_params(
+                        "no queued HTTP/HTTPS task has an available, permitted destination",
+                    )
+                } else {
+                    RpcErrorObject::task_not_found("no queued task")
+                };
+                return reply_error(request, error);
+            }
+            Err(error) => return reply_error(request, error),
+        }
+    };
+
+    let id = transfer.id.clone();
+    if let Err((transfer, error)) = spawn_http_transfer(state, transfer) {
+        eprintln!("could not start HTTP worker: {error}");
+        handle_http_spawn_failure(state, &transfer, &error);
         return reply_error(request, RpcErrorObject::internal_error(error.to_string()));
     }
+
+    dispatch_available_http_tasks(state);
     request.id.clone().map(|request_id| {
         RpcResponse::success(Some(request_id), serde_json::Value::String(id.to_string()))
     })
@@ -327,25 +401,32 @@ fn dispatch_server_request(
         return start_http_task(state, request);
     }
 
-    let mut locked = state.lock().expect("server state mutex poisoned");
-    if matches!(
-        request.method.as_str(),
-        "task.pause" | "task.resume" | "task.remove"
-    ) && let Some(id) = request
-        .params
-        .as_ref()
-        .and_then(|params| params.get("id"))
-        .and_then(serde_json::Value::as_str)
-        && locked.active_http.contains(&TaskId::from(id))
-    {
-        return reply_error(
-            request,
-            RpcErrorObject::invalid_params(
-                "active HTTP transfers cannot be paused, resumed, or removed",
-            ),
-        );
+    let response = {
+        let mut locked = state.lock().expect("server state mutex poisoned");
+        if matches!(
+            request.method.as_str(),
+            "task.pause" | "task.resume" | "task.remove"
+        ) && let Some(id) = request
+            .params
+            .as_ref()
+            .and_then(|params| params.get("id"))
+            .and_then(serde_json::Value::as_str)
+            && locked.active_http.contains(&TaskId::from(id))
+        {
+            return reply_error(
+                request,
+                RpcErrorObject::invalid_params(
+                    "active HTTP transfers cannot be paused, resumed, or removed",
+                ),
+            );
+        }
+        RpcDispatcher::dispatch(&mut locked.core, request)
+    };
+
+    if request.method == "task.queue" {
+        dispatch_available_http_tasks(state);
     }
-    RpcDispatcher::dispatch(&mut locked.core, request)
+    response
 }
 
 fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<ServerState>>) -> io::Result<()> {
@@ -554,6 +635,8 @@ fn main() -> io::Result<()> {
     }));
     let address = format!("127.0.0.1:{}", config.port);
     let listener = TcpListener::bind(&address)?;
+
+    dispatch_available_http_tasks(&state);
 
     eprintln!("Nexum server listening on {address}");
     eprintln!(

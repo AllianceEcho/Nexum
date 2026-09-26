@@ -25,7 +25,7 @@ This plan distinguishes code-level foundations from an end-to-end feature availa
 - [x] Bandwidth-policy interface and limit calculation
 - [x] Scheduler events and controlled unit tests
 - [ ] Apply calculated bandwidth limits to transfers
-- [ ] Automatically dispatch queued work and retries; HTTP workers currently require an explicit `task.start`
+- [x] Server-side dispatcher automatically fills available HTTP worker slots for queued work and retries; Scheduler remains transport-agnostic
 
 ### Phase 3 - Storage
 
@@ -40,7 +40,7 @@ This plan distinguishes code-level foundations from an end-to-end feature availa
 - [x] Resolver request/result/error model and registry
 - [x] HTTP/HTTPS validation, magnet `xt=urn:btih:` parameter presence check, and existing-local-path validation
 - [x] Resolver tests and Core task-creation validation
-- [x] Route queued HTTP/HTTPS tasks to an HTTP worker from server `task.start`
+- [x] Route eligible queued HTTP/HTTPS tasks through the server dispatcher after `task.queue`, startup recovery, or worker completion/failure
 - [ ] Route magnet and local-file sources to compatible transfer engines
 - [ ] Add actual magnet and local-source transfer paths
 
@@ -49,7 +49,7 @@ This plan distinguishes code-level foundations from an end-to-end feature availa
 - [x] Adapter capabilities, task mapping, and engine registry
 - [x] Simulated in-memory engine and blocking HTTP GET engine with redirect following
 - [x] Controlled engine tests
-- [x] Run the HTTP engine from server `task.start`; CLI and Desktop use this same RPC
+- [x] Run the HTTP engine from the server dispatcher; CLI and Desktop use the same RPC and may still call `task.start` as a manual kick
 - [x] Stage HTTP downloads in a `.part` file and rename only a complete response to the destination
 - [x] Add incremental progress reporting and persistence for real transfers
 - [ ] Add cancellation and supported pause/resume behavior for real transfers
@@ -74,7 +74,7 @@ This plan distinguishes code-level foundations from an end-to-end feature availa
 - [x] Use `data_dir` for SQLite persistence and restart recovery
 - [x] Make normal `task.start` launch a real HTTP/HTTPS download for supported sources
 - [x] Persist transfer errors and expose them through task views instead of only server logs
-- [ ] Automatically dispatch queued retries
+- [x] Automatically dispatch queued retries and newly queued HTTP/HTTPS work when a scheduler slot is available
 
 ### Phase 8 - Desktop
 
@@ -114,11 +114,11 @@ This plan distinguishes code-level foundations from an end-to-end feature availa
 
 ## 2. Delivery Order From Current Code
 
-1. Complete the HTTP runtime path with cancellation or supported pause/resume and automatic retry dispatch.
+1. Complete the HTTP runtime path with cancellation or supported pause/resume behavior.
 2. Complete server/client contracts: authenticated transport where configured, observable events, and a browser-compatible endpoint or bridge.
 3. Connect plugin providers and enforce their declared permissions.
 4. Replace simulated media operations with real processing, then expose automation and remote-device workflows.
 
 ## 3. Current Focus
 
-Phases 0-9 have varying levels of scaffolding and library coverage. The running server persists tasks in SQLite, recovers them on restart, and launches a real HTTP/HTTPS worker for `task.start`. It persists throttled intermediate progress, exposes the latest transfer error through task views, and records final progress and completion after a successful transfer. An active HTTP transfer cannot be paused, resumed, or removed; cancellation and automatic retry dispatch remain unavailable. Magnet and local-file transfers remain unsupported. Plugin and media crates contain more than data types, but their provider callbacks and real processing are not integrated into the product path.
+Phases 0-9 have varying levels of scaffolding and library coverage. The running server persists tasks in SQLite, recovers them on restart, and automatically dispatches eligible HTTP/HTTPS work after queueing, startup recovery, and worker completion or failure. `task.start` remains a manual kick and compatibility method. The server persists throttled intermediate progress, exposes the latest transfer error through task views, and records final progress and completion after a successful transfer. An active HTTP transfer cannot be paused, resumed, or removed; cancellation remains unavailable. Magnet and local-file transfers remain unsupported. Plugin and media crates contain more than data types, but their provider callbacks and real processing are not integrated into the product path.

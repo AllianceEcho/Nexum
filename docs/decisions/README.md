@@ -6,6 +6,11 @@ Recommended sections: Context, Decision, Rationale, Consequences, and Alternativ
 
 Examples include decisions about the Rust core, SQLite storage, Protocol versioning, transport boundaries, and other durable architecture decisions.
 
-The first recorded decision is [0001: Persist Transfer Progress and Errors](0001-persist-transfer-progress-and-errors.md). New decisions should use the next numbered filename.
+The recorded decisions are:
+
+- [0001: Persist Transfer Progress and Errors](0001-persist-transfer-progress-and-errors.md)
+- [0002: Server-Owned Automatic Dispatch for HTTP Transfers](0002-auto-dispatch-http-transfers.md)
+
+ADR 0002 supersedes ADR 0001's temporary decision to dispatch retries manually. New decisions should use the next numbered filename.
 
 For the Chinese version, see [README.zh-CN.md](README.zh-CN.md).

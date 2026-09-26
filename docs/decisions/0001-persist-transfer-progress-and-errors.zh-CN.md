@@ -1,6 +1,6 @@
 # ADR 0001：持久化传输进度与错误
 
-- 状态：已接受
+- 状态：已接受；第 5 项已由 ADR 0002 取代
 - 日期：2026-09-25
 
 ## 背景
@@ -13,7 +13,7 @@ HTTP Worker 过去只持久化最终字节数，因此长时间传输通过任�
 2. Server 自上次写入起累计新增至少 1 MiB 或经过 250 ms 时持久化中间进度；成功任务标记为 `Completed` 前始终持久化最终快照。
 3. 在 `DownloadTask`、`StoredTask` 和 SQLite Schema Version 2 中增加可为空的 `last_error`。Version 1 数据库通过增加空值字段完成迁移。
 4. `TaskView` 通过可选的 `error` 字段返回最近一次传输错误。默认重试预算未耗尽时，失败传输会保留错误并重新排队；预算耗尽后任务保持 `Failed`。领取新一轮任务时清除错误并重置进度，成功完成时也清除错误。
-5. 暂时保留手动派发重试。排队中的重试仍需再次调用 `task.start`。
+5. 暂时保留手动派发重试。排队中的重试仍需再次调用 `task.start`。该临时决策已由 [ADR 0002](0002-auto-dispatch-http-transfers.zh-CN.md) 取代，重试派发现在由 Server 负责的 HTTP 派发器执行。
 
 ## 原因
 
